@@ -54,7 +54,6 @@ def save_data_raw_parquet(df: pd.DataFrame, path: Path) -> None:
 
 
 def build_hourly_prices(raw_input: Path, output_path: Path) -> None:
-    """15-min raw → hourly aggregation (4 quarters averaged into 1 hour)."""
     con = duckdb.connect(DB_PATH)
     hourly = con.execute(f"""
         SELECT
@@ -81,7 +80,7 @@ def build_hourly_prices(raw_input: Path, output_path: Path) -> None:
 def main():
     start_date = "2026-03-16T00:00"
     end_date = "2026-06-16T00:00"
-    price_area = "DK2"
+    price_area = "DK1"
 
     start_day = start_date[:10]
     end_day = end_date[:10]

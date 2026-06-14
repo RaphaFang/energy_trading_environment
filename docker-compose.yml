@@ -7,7 +7,11 @@ services:
     working_dir: /app
     profiles:
       - ingest
-    command: python .py
+    command: >
+      sh -c "python src/dk_holidays.py && 
+             python src/day_ahead.py && 
+             python src/weather_forecast_meteo.py && 
+             python src/wind_solar_load.py"
     # env_file:
     #   - .env
 
