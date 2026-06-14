@@ -2,8 +2,11 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 
-data/raw/
-data/cleaned/
+data/raw/*
+!data/raw/.gitkeep
+
+data/cleaned/*
+!data/cleaned/.gitkeep
 
 data/*.duckdb
 data/*.duckdb.wal
