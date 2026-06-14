@@ -1,0 +1,25 @@
+services:
+  ingest:
+    build: .
+    container_name: power-ingest
+    volumes:
+      - ./:/app
+    working_dir: /app
+    profiles:
+      - ingest
+    command: python .py
+    # env_file:
+    #   - .env
+
+  notebook:
+    build: .
+    container_name: power-notebook
+    ports:
+      - "127.0.0.1:8888:8888"
+    volumes:
+      - ./:/app
+    working_dir: /app
+    command: jupyter lab --ip=0.0.0.0 --allow-root --ServerApp.token=''
+
+    # env_file:
+    #   - .env

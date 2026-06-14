@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+data/raw/
+data/cleaned/
+
+data/*.duckdb
+data/*.duckdb.wal
+
+.env
+
+.DS_Store
