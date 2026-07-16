@@ -1,4 +1,7 @@
 services:
+  # 資料抓取 → new_data/*.parquet → energy.duckdb。順序有意義:
+  # calendar 是 spine(其餘 LEFT JOIN 掛上去)、load_duckdb 必須最後(它做合併)。
+  # entsoe 需要 ENTSOE_TOKEN,沒 token 會跳過 → 解開 env_file 才抓得到 Tier-2。
   ingest:
     build: .
     container_name: power-ingest
@@ -8,10 +11,14 @@ services:
     profiles:
       - ingest
     command: >
-      sh -c "python src/dk_holidays.py && 
-             python src/day_ahead.py && 
-             python src/weather_forecast_meteo.py && 
-             python src/wind_solar_load.py"
+      sh -c "python new_src/data/calendar_features.py &&
+             python new_src/data/elspot_price.py &&
+             python new_src/data/weather_forecast.py &&
+             python new_src/data/energinet_forecast.py &&
+             python new_src/data/residual_demand.py &&
+             python new_src/data/fuel_prices.py &&
+             python new_src/data/entsoe_features.py &&
+             python new_src/data/load_duckdb.py"
     # env_file:
     #   - .env
 

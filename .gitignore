@@ -1,16 +1,13 @@
 __pycache__/
 *.pyc
 .ipynb_checkpoints/
+.ruff_cache/
 
-data/raw/*
-!data/raw/.gitkeep
+# 資料全部不進 git:76M parquet + duckdb,重跑 new_src/data/*.py 可重建
+new_data/
 
-data/cleaned/*
-!data/cleaned/.gitkeep
-
-data/*.duckdb
-data/*.duckdb.wal
+# graphify 產出,graphify update ./ 可重建
+graphify-out/
 
 .env
-
 .DS_Store
