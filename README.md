@@ -28,10 +28,12 @@ new_src/
 │               v1_single.py   單顆電池 price-taker、無 λ。perfect(天花板)/naive(地板)
 │                              LP + settle 是全部版本共用的地基
 │               v2_multi.py    多 agent + λ 價格衝擊 + 輪流最佳反應(Nash)
-│                              v2.1/v2.2 = belief 參數(上帝視角 vs 信自己的預測)
+│                              belief/br 可**每家一份** → agent 能在體量/資訊/策略上異質
 │               v3_cournot.py  agent 內化自身衝擊(LP→QP)+ 卡特爾/競爭 benchmark
 │               v4_wind.py     風電商情境:電池溢價與對純風商的外部性
-└── compare.py  統一比較 harness(綁 models + agents,同一批測試窗)
+│               fringe.py      **λ 的估計與診斷**(多變數偏導數,不是模擬器的一部分)
+├── compare.py    統一比較 harness(綁 models + agents,同一批測試窗)
+└── experiment.py **產出論文數字的地方**:v3/v4/三把尺/異質 agent,各跑三組體量
 ```
 
 依賴方向單向:`v4 → v3 → v2 → v1`。v3 不改 v2——它只是把自己的最佳反應用
@@ -43,11 +45,19 @@ new_src/
 
 ```bash
 python new_src/models/baseline.py     # 預測準度:rMAE 表
-python new_src/compare.py W           # 錢:各策略佔天花板幾成(W=週窗, M=月窗)
-python new_src/agents/v2_multi.py     # λ 掃描:競爭租值消散
-python new_src/agents/v3_cournot.py   # self-check:三尺階梯 C ≤ N ≤ M
-python new_src/agents/v4_wind.py      # self-check:電池溢價 + 外部性
+python new_src/compare.py W           # 錢:各策略佔單顆基準幾成(W=週窗, M=月窗)
+python new_src/experiment.py all      # 論文結果:v3/v4/三把尺/異質,各三組體量
+python new_src/agents/fringe.py DK1   # λ 怎麼估出來的 + 診斷圖(存 figs/)
 ```
+
+**兩個關鍵結果**(細節見 `SIMULATOR_OVERVIEW.md` §3):
+
+- **丹麥現況(10 MW)下多 agent 機制加了零**:10 家競爭 = 1 家獨佔 = 93% 單顆基準。
+  `λ×總淨量 = 0.04 €/MWh`,在 €60 的價上撼動不了任何東西。要 GW 級才咬得動。
+- **預測優勢在競爭下被放大 6 倍**:LightGBM 相對 naive-24h 的優勢,
+  10 MW 時是 1.18×,10 GW 時是 **6.3×**。競爭把價差壓平後,只有看得準的人抓得到剩下的窗口。
+
+每個 agent 檔都有 `demo()` self-check,直接跑該檔就會驗證(斷言掛掉表示邏輯被改壞)。
 
 每個 agent 檔都有 `demo()` self-check,直接跑該檔就會驗證(斷言掛掉表示邏輯被改壞)。
 
