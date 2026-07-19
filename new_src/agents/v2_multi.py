@@ -22,25 +22,50 @@ sys.path.insert(0, os.path.dirname(__file__))
 from v1_single import load_prices, perfect, settle  # noqa: E402
 
 
+def _per_agent(spec, n, default):
+    """把「共用」或「每家一份」統一成長度 n 的 list,呼叫端不必分兩種寫法。
+    None            → 全員用 default
+    單一函式         → 全員共用同一個策略
+    list[函式]       → 每家一套策略
+    1-D 陣列 (H,)    → 全員共用同一份信念價
+    2-D 陣列 (N,H)   → 每家一份信念價
+    """
+    if spec is None:
+        return [default] * n
+    if callable(spec):
+        return [spec] * n
+    if isinstance(spec, (list, tuple)) and callable(spec[0]):
+        assert len(spec) == n, f"策略數 {len(spec)} 對不上玩家數 {n}"
+        return list(spec)
+    arr = np.asarray(spec, float)
+    if arr.ndim == 2:
+        assert len(arr) == n, f"信念列數 {len(arr)} 對不上玩家數 {n}"
+        return [row for row in arr]
+    return [arr] * n
+
+
 def solve_day(price, weights, lam, rounds=15, tol=1e-3, belief=None, br=None):
-    """一週的均衡:輪流(Gauss-Seidel)最佳反應。weights[i] = 玩家 i 的體量(電池數/權重)。
-    每家每 MWh 排程相同,但淨量按體量放大 → 大玩家一動就撼動出清價。
+    """一週的均衡:輪流(Gauss-Seidel)最佳反應。weights[i] = 玩家 i 的體量。
     回傳每家「每單位體量」的排程 C/D、出清價、用了幾回合。
 
-    belief=None(預設)= v2.1 上帝視角:agent 對「真實價」最佳反應。
-    belief=預測價(如 LightGBM)= v2.2:agent 只信自己的預測來排程(price + λ×別人),
-    但**結算仍用真實出清價**(真實價 + λ×實際淨量)→ 競爭+預測誤差合體。
+    **agent 可以在三個維度上不一樣**(這是研究「哪個 agent 賺最多」的前提——
+    全同質的話每家每單位報酬必然相同,那是對稱性不是發現):
 
-    br(seen, lam_wi) -> (c, d) = 最佳反應函式,預設 price-taker(吃 perfect 的 LP、
-    無視自己的 λ·w_i)。v3 傳 Cournot 版進來內化自身衝擊 → 版本演進不用改這支。"""
-    if br is None:  # 預設 = v2 price-taker:不內化自身衝擊,忽略 lam_wi
+      weights  體量      list[float]
+      belief   資訊/預測  None=全員上帝視角;1-D 陣列=全員共用同一份預測;
+                         2-D (N,H)=**每家一份**(A 家用 LightGBM、B 家用 naive…)
+      br       策略      單一函式=全員共用;list[函式]=**每家一套**
+                         (A 家 price-taker、B 家 Cournot 自制…)
 
-        def br(seen, lam_wi):
-            return perfect(seen)
+    belief 的舊語意保留:None = v2.1 上帝視角,共用 1-D 陣列 = v2.2 全員同一個預測。
+    不論信什麼,**結算一律用真實出清價**(真實價 + λ×實際淨量)——信錯就會被罰。
 
+    br(seen, lam_wi) -> (c, d)。預設 price-taker(吃 perfect 的 LP、無視自己的
+    λ·w_i);v3 傳 Cournot 版進來內化自身衝擊。"""
     w = np.asarray(weights, float)
-    bel = price if belief is None else np.asarray(belief, float)  # 排程依據的信念價
     N, H = len(w), len(price)
+    bels = _per_agent(belief, N, np.asarray(price, float))  # 每家的信念價
+    brs = _per_agent(br, N, lambda seen, lam_wi: perfect(seen))  # 每家的最佳反應
     C = np.zeros((N, H))
     D = np.zeros((N, H))
     used = rounds
@@ -49,10 +74,8 @@ def solve_day(price, weights, lam, rounds=15, tol=1e-3, belief=None, br=None):
         for i in range(N):  # 輪流,馬上看到別人這輪的新決定
             net = (w[:, None] * (C - D)).sum(0)  # 全體體量加權淨量
             others = net - w[i] * (C[i] - D[i])  # 扣掉自己 = 別人的加權淨量
-            seen = (
-                bel + lam * others
-            )  # 我信的價被別人推移(v2.2 用預測價、v2.1 用真實價)
-            c, d = br(seen, lam * w[i])
+            seen = bels[i] + lam * others  # 我信的價,被別人的淨量推移
+            c, d = brs[i](seen, lam * w[i])
             change += np.abs(c - C[i]).sum() + np.abs(d - D[i]).sum()
             C[i], D[i] = c, d
         if change < tol:  # 沒人想再改 → 收斂
@@ -60,6 +83,12 @@ def solve_day(price, weights, lam, rounds=15, tol=1e-3, belief=None, br=None):
             break
     cleared = price + lam * (w[:, None] * (C - D)).sum(0)  # 出清價(真實價+全體加權衝擊)
     return C, D, cleared, used
+
+
+def per_agent_revenue(C, D, cleared, weights):
+    """每家的報酬(€)。異質實驗的主要輸出——問「哪個 agent 賺最多」就是看這個。"""
+    w = np.asarray(weights, float)
+    return np.array([w[i] * settle(C[i], D[i], cleared) for i in range(len(w))])
 
 
 def fleet_revenue(C, D, cleared, weights):
@@ -94,6 +123,36 @@ def demo():
         f"  v2 ok: λ=0 三家相同;λ=4 尖峰 €{p[h]:.0f}→出清 €{cl1[h]:.1f}(被打平),{used} 回合收斂"
     )
     print(f"  v2 belief ok: 上帝視角 €{god:.0f} > 瞎預測 €{blind:.0f}(預測誤差的代價)")
+    _demo_heterogeneous(p)
+
+
+def _demo_heterogeneous(p):
+    """異質 agent 的 self-check。同質時每家每單位報酬必然相同(對稱性,不是發現);
+    要能問「哪個 agent 賺最多」,agent 必須真的不一樣。這裡驗兩個維度都通。"""
+    # ① 資訊維度:三家同體量,預測品質不同(完美 / 有雜訊 / 全瞎)→ 報酬須照品質排序
+    rng = np.random.default_rng(0)
+    good = p.copy()  # 完美預知
+    mid = p + rng.normal(0, 8, len(p))  # 有雜訊
+    blind = np.full(len(p), p.mean())  # 看不出尖峰
+    C, D, cl, _ = solve_day(p, [1, 1, 1], lam=0.5, belief=np.array([good, mid, blind]))
+    rev = per_agent_revenue(C, D, cl, [1, 1, 1])
+    assert rev[0] > rev[2], f"預測準的該賺比較多,得 {rev[0]:.1f} vs {rev[2]:.1f}"
+    assert rev[0] >= rev[1] >= rev[2], f"報酬須照預測品質排序,得 {rev.round(1)}"
+    # ② 共用信念要退回舊行為(向後相容):傳 1-D 陣列 == 全員同一份
+    Cs, Ds, cls_, _ = solve_day(p, [1, 1, 1], lam=0.5, belief=mid)
+    Ch, Dh, clh, _ = solve_day(p, [1, 1, 1], lam=0.5, belief=np.array([mid, mid, mid]))
+    assert np.allclose(Cs, Ch) and np.allclose(cls_, clh), (
+        "共用 belief 應等同每家都傳同一份"
+    )
+    # ③ 策略維度:每家可以有自己的 br(這裡用同一個驗管線,v3 會傳真的 Cournot 進來)
+    same = lambda seen, lam_wi: perfect(seen)  # noqa: E731
+    Cb, Db, clb, _ = solve_day(p, [1, 1, 1], lam=0.5, br=[same, same, same])
+    Cd, Dd, cld, _ = solve_day(p, [1, 1, 1], lam=0.5)
+    assert np.allclose(Cb, Cd), "list[br] 全傳同一個應等同預設"
+    print(
+        f"  v2 異質 ok: 預測品質 完美€{rev[0]:.0f} > 雜訊€{rev[1]:.0f} > 瞎€{rev[2]:.0f}"
+        "(同體量,差異純粹來自資訊)"
+    )
 
 
 def main():
