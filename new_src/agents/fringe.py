@@ -41,6 +41,35 @@ DB = "new_data/energy.duckdb"
 FIGDIR = "figs"
 NGRID = 60  # λ(x) 取樣格點數
 
+# structural_lambda 的特徵集設計:x(本地殘餘負載)必須是本地供需的**唯一**管道。
+# 拿掉 x 的成分(load/wind/solar 預測):x = load − wind − solar,三者留在特徵集裡的話,
+# 「固定它們、只動 x」是矛盾的反事實,樹在那個方向沒資訊 → 偏導數假性趨近 0(實測過)。
+# 拿掉價格 lag:會讓模型變自迴歸、把價格水平吸走,估不到結構關係。
+_DROP = {
+    "timestamp_utc",
+    "area",
+    "holiday_name",
+    "y_price_eur",
+    "load_mwh",
+    "wind_mwh",
+    "solar_mwh",
+    "residual_mwh",  # 同時刻實測
+    "loadfc_mwh",
+    "onshore_wind_da_mwh",
+    "offshore_wind_da_mwh",
+    "solar_da_mwh",  # x 的成分
+    "price_lag24_eur",
+    "price_lag168_eur",
+    "load_lag24_mwh",
+    "residual_lag24_mwh",  # 自迴歸
+    "wind_speed_100m",
+    "wind_gusts_10m",  # 風速 → 風出力 → x 的成分
+    "shortwave_radiation",
+    "direct_radiation",
+    "diffuse_radiation",  # 輻射 → 光出力 → 同上
+}
+FD_STEP = 300.0  # 有限差分步長(MW):樹是階梯函數,步長太小會落在同一葉子得到 0
+
 
 def load_state(area: str = "DK1") -> pd.DataFrame:
     """殘餘負載 x、真實出清價 act、燃料、德國殘餘(當外生 shifter)。用 actual 校準環境。"""
@@ -54,6 +83,57 @@ def load_state(area: str = "DK1") -> pd.DataFrame:
     ).fetchdf()
     con.close()
     return df
+
+
+def structural_lambda(area: str = "DK1", step: float = FD_STEP) -> pd.DataFrame:
+    """**這是給模擬器用的 λ。** 多變數偏導數:控制鄰國/燃料/邊界/日曆後,本地殘餘負載
+    對價格的偏效果 ∂p/∂x,在每小時自己的完整狀態向量上求值。
+
+    為什麼偏導數才對:λ 要回答「我的電池多買 1 MW,價格漲多少」——那個實驗裡德國的風、
+    天然氣價、瑞典的水**都不變**,正是 ceteris paribus。單變數 OLS 斜率回答的是另一個
+    問題:「當本地殘餘剛好高 1 MW 時(通常因為德國也剛好缺電),價格高多少」,那裡面
+    混著鄰國效應 → 系統性高估。實測差一個數量級(0.034 vs 0.0035)。
+
+    做法:LightGBM 配 p ~ (x, 燃料, 德/瑞殘餘, 邊界, 日曆, 氣溫),再對 x 做中央差分。
+    步長 300MW(見 FD_STEP);特徵集見 _DROP 的理由。
+
+    ⚠️ 觀察性估計,不是因果識別。控制了可觀察的混淆,沒處理不可觀察的。嚴謹版該用
+    風當工具變數(風外生、只透過殘餘負載進價格)——資料齊,沒做。
+
+    回傳每小時:timestamp / x / gas / price / lam。"""
+    import lightgbm as lgb
+
+    con = duckdb.connect(DB, read_only=True)
+    d = con.execute(
+        f"SELECT * FROM training WHERE area='{area}' AND y_price_eur IS NOT NULL "
+        "AND residual_mwh IS NOT NULL AND ttf_gas_eur_mwh IS NOT NULL "
+        "ORDER BY timestamp_utc"
+    ).fetchdf()
+    con.close()
+
+    d["x"] = d["residual_mwh"]
+    feats = [c for c in d.columns if c not in _DROP and c != "x" and d[c].notna().any()]
+    feats.append("x")
+    for b in d[feats].select_dtypes("bool"):
+        d[b] = d[b].astype(int)
+    X, y = d[feats], d["y_price_eur"]
+    m = lgb.LGBMRegressor(
+        n_estimators=600, learning_rate=0.05, num_leaves=63, verbose=-1, random_state=0
+    ).fit(X, y)
+
+    Xp, Xm = X.copy(), X.copy()
+    Xp["x"] += step
+    Xm["x"] -= step
+    lam = (m.predict(Xp) - m.predict(Xm)) / (2 * step)
+    return pd.DataFrame(
+        {
+            "timestamp_utc": d["timestamp_utc"],
+            "x": d["x"],
+            "gas": d["ttf_gas_eur_mwh"],
+            "price": d["y_price_eur"],
+            "lam": lam,
+        }
+    )
 
 
 def scalar_lambda(df: pd.DataFrame) -> dict:
@@ -234,6 +314,31 @@ def demo() -> None:
     print(
         f"  fringe ok: λ 全域非負、單調;局部 低{lo:.3f} < 純量{sca:.3f} < 高{hi:.3f}(純量抹平兩端)"
     )
+    _demo_confounding()
+
+
+def _demo_confounding() -> None:
+    """守住 structural_lambda 的核心主張:單變數斜率會把鄰國效應算到本地頭上。
+
+    合成一個**真值已知**的世界:丹麥風 w 與德國風 z 同源(同一片天氣系統,相關 0.8)。
+    價格幾乎完全由德國決定,本地殘餘只有微小的真實效果 TRUE_LAM。
+    → 單變數 OLS 應嚴重高估;控制 z 後應收斂回 TRUE_LAM。
+    這個測試會在有人把 z(鄰國變數)從特徵集拿掉時失敗。"""
+    rng = np.random.default_rng(1)
+    n = 20000
+    TRUE_LAM = 0.003
+    z = rng.normal(0, 1000, n)  # 德國殘餘
+    x = 0.8 * z + rng.normal(0, 600, n)  # 本地殘餘:與德國同源
+    price = 50 + 0.03 * z + TRUE_LAM * x + rng.normal(0, 5, n)  # 價幾乎由德國定
+    naive = float(np.polyfit(x, price, 1)[0])  # 單變數:混淆
+    A = np.column_stack([x, z, np.ones(n)])
+    partial = float(np.linalg.lstsq(A, price, rcond=None)[0][0])  # 偏效果:控制 z
+    assert naive > 4 * TRUE_LAM, f"單變數應嚴重高估,得 {naive:.4f}"
+    assert abs(partial - TRUE_LAM) < 5e-4, f"控制鄰國後應收斂回真值,得 {partial:.4f}"
+    print(
+        f"  混淆 ok: 真值 {TRUE_LAM:.4f} → 單變數 {naive:.4f}"
+        f"(高估 {naive / TRUE_LAM:.0f}×)、控制鄰國 {partial:.4f}"
+    )
 
 
 def main() -> None:
@@ -248,11 +353,29 @@ def main() -> None:
         f"\n=== {area}  {len(df):,} 小時  {df.timestamp_utc.min().date()} → "
         f"{df.timestamp_utc.max().date()} ===\n"
     )
-    print("【純量 λ 重現(舊模型用的)】")
+    print("【單變數 λ(舊估計,有混淆)】")
     print(f"  裸斜率 price~x            : {lam['naive']:.4f} €/MWh per MW")
-    note = "  ← v2-v4 用的 0.037 就是這個" if area == "DK1" else ""
+    note = "  ← v2-v4 舊版用的 0.037 就是這個" if area == "DK1" else ""
     print(f"  控 gas+co2 後殘餘斜率     : {lam['fuel_controlled']:.4f}{note}")
-    print("  這是單一 OLS = 一條直線,把下面的曲棍球桿抹平成一個數。\n")
+    print("  只控燃料,沒控鄰國 → 把丹麥/德國的天氣相關性算到本地頭上。\n")
+
+    sl = structural_lambda(area)
+    print("【結構 λ(多變數偏導數)← 模擬器該用的】")
+    print(
+        f"  中位 {sl['lam'].median():.4f}   IQR [{sl['lam'].quantile(0.25):.4f}, "
+        f"{sl['lam'].quantile(0.75):.4f}]   p95 {sl['lam'].quantile(0.95):.4f}"
+    )
+    print(
+        f"  比單變數小 {lam['fuel_controlled'] / sl['lam'].median():.0f} 倍。"
+        "差額是混淆:丹麥風大的日子北德通常也風大(同一片天氣系統),\n"
+        "  單變數把德國的效果全記到本地殘餘負載頭上。偏導數固定鄰國/燃料才是\n"
+        "  「我多買 1MW」該問的 ceteris paribus 實驗。\n"
+    )
+    sl_g = sl.assign(gt=pd.qcut(sl["gas"], 3, labels=["gas 低", "gas 中", "gas 高"]))
+    print("  分燃料:", end="")
+    for g, s in sl_g.groupby("gt", observed=True):
+        print(f"  {g} {s['lam'].median():.4f}", end="")
+    print("\n")
 
     print("【λ(x):沿殘餘負載的局部斜率】保序迴歸,x 分位取樣")
     print(f"  {'x (MW)':>12}{'p₀ €':>9}{'λ(x)':>9}{'vs 純量':>9}")
