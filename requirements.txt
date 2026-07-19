@@ -12,6 +12,9 @@ lightgbm==4.6.0
 # agent LP/QP solver (new_src/agents/ — scipy.optimize.linprog HiGHS)
 scipy==1.17.1
 
+# fringe 估計出圖 (new_src/agents/fringe.py)
+matplotlib==3.10.9
+
 # 資料源 (new_src/data/)
 entsoe-py==0.8.0
 holidays==0.98

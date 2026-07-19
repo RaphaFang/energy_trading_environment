@@ -9,5 +9,8 @@ new_data/
 # graphify 產出,graphify update ./ 可重建
 graphify-out/
 
+# fringe 出的圖,重跑 fringe.py 可重生
+figs/
+
 .env
 .DS_Store
