@@ -1,9 +1,26 @@
-duckdb==1.1.3
-pandas==2.2.3
-pyarrow==18.1.0
-requests==2.32.3
-jupyterlab==4.3.4
-plotly==5.24.1
-python-dotenv==1.0.1
-scikit-learn==1.6.1
-ipywidgets==8.1.5
+# pin 成本機實際驗證過的版本(舊的 pin 比開發環境落後一個大版號,Docker 裝出來的
+# 環境跟跑出結果的環境不同 → 數字對不起來)
+duckdb==1.5.3
+pandas==3.0.3
+pyarrow==21.0.0
+requests==2.32.4
+
+# 統計模型 (new_src/models/)
+scikit-learn==1.9.0
+lightgbm==4.6.0
+
+# agent LP/QP solver (new_src/agents/ — scipy.optimize.linprog HiGHS)
+scipy==1.17.1
+
+# fringe 估計出圖 (new_src/agents/fringe.py)
+matplotlib==3.10.9
+
+# 資料源 (new_src/data/)
+entsoe-py==0.8.0
+holidays==0.98
+
+# notebook (eda.ipynb)
+jupyterlab==4.4.3
+plotly==6.5.0
+ipywidgets==8.1.7
+python-dotenv==1.2.2
