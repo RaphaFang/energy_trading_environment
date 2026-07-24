@@ -16,6 +16,8 @@
   python new_src/experiment.py v4         風力情境:電池溢價與外部性
   python new_src/experiment.py scales     三把尺 C/N/M + 勾結指標
   python new_src/experiment.py hetero     異質預測品質:哪個 agent 賺最多
+  python new_src/experiment.py v2.3       體量連續掃描(10MW→10GW)× 異質預測品質,
+                                           不含風力(單一自變數),找優勢倍數的門檻
 """
 
 import os
@@ -214,6 +216,64 @@ def _run_hetero(area="DK1"):
             )
 
 
+def _run_v2_3(area="DK1"):
+    """v2.3:體量連續掃描 × 異質預測品質 — 定出「預測優勢開始被放大」的門檻在哪。
+
+    地基跟 §hetero 一樣(v2.2 belief=各家預測價、price-taker、λ 結構估計固定),
+    唯一差別是把 SCALES 的 3 個離散點換成 log-spaced 連續網格(10MW→10GW,13 點,
+    含原本兩個錨點 1GW/10GW)。**刻意不接 v4(風力)**——單一自變數是體量,
+    加風力會多一個變因,測不出「優勢倍數」的門檻是被體量還是被風力推動的。
+    """
+    from models.forecast import fit_predict, load_training
+
+    print("\n" + "=" * 78)
+    print("【v2.3】體量連續掃描 × 異質預測品質(不含風力,單一自變數=體量)")
+    print("=" * 78)
+    f = fit_predict(load_training(area))
+    te, act, preds = f["te_idx"], f["actual"], f["preds"]
+    per = te.tz_localize(None).to_period("W")
+    weeks_idx = [k for k in per.unique() if (per == k).sum() >= MIN_H]
+    nw = len(weeks_idx)
+    MIX = ["LightGBM"] * 3 + ["Ridge"] * 3 + ["naive-24h"] * 4
+    scale_grid = np.geomspace(10.0, 10_000.0, 13)  # MW,10 段對數等距,含 1GW/10GW 錨點
+
+    rows = []
+    for tot in scale_grid:
+        w = np.full(len(MIX), tot / len(MIX))
+        acc, ceil = np.zeros(len(MIX)), 0.0
+        for k in weeks_idx:
+            m = np.asarray(per == k)
+            a = act[m]
+            ceil += ceiling(a)
+            bel = np.array([preds[n][m] for n in MIX])  # 每家一份預測
+            C, D, cl, _ = solve_day(a, w, LAM, belief=bel)
+            acc += per_agent_revenue(C, D, cl, w)
+        pct = {
+            nm: acc[[i for i, n in enumerate(MIX) if n == nm]].mean() / w[0] / ceil
+            for nm in ("LightGBM", "Ridge", "naive-24h")
+        }
+        rows.append(
+            {
+                "scale_mw": tot,
+                **pct,
+                "advantage": pct["LightGBM"] / pct["naive-24h"],
+            }
+        )
+
+    out = pd.DataFrame(rows)
+    print(f"\n     {'體量 MW':>10}{'LightGBM':>10}{'Ridge':>9}{'naive-24h':>11}{'優勢倍數':>10}")
+    for _, r in out.iterrows():
+        print(
+            f"     {r.scale_mw:>10,.0f}{r.LightGBM:>10.0%}{r.Ridge:>9.0%}"
+            f"{r['naive-24h']:>11.0%}{r.advantage:>9.2f}×"
+        )
+    os.makedirs("new_src/results", exist_ok=True)
+    out_path = f"new_src/results/v2_3_sweep_{area}.csv"
+    out.to_csv(out_path, index=False)
+    print(f"\n  → 存到 {out_path},供畫連續曲線(優勢倍數 vs 體量)用。")
+    return out
+
+
 def main() -> None:
     which = (sys.argv[1] if len(sys.argv) > 1 else "all").lower()
     runners = {
@@ -221,6 +281,7 @@ def main() -> None:
         "v4": _run_v4,
         "scales": _run_scales,
         "hetero": _run_hetero,
+        "v2.3": _run_v2_3,
     }
     print(
         f"\nλ = {LAM}(結構估計,見 agents/fringe.py)。單顆基準 = 1 顆 1MW/4MWh、λ=0、完美預知。"
