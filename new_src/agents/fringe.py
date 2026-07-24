@@ -20,11 +20,19 @@
   4. act 被基本面解釋多少:R² 逐步(殘餘→+gas→+co2→+德residual),全步驟鎖同一批樣本。
      剩下的 23% 是「市場力 + 進口 + 天氣 + 未納入變數」的**上界**,不是市場力本身。
 
+部分做了:
+  - **非線性開關**。`p0_at()` / `nonlinear_impact()` 把這條曲線包成 `v2_multi.solve_day`
+    的 `impact=` 參數可以吃的形狀:net(MW) -> p₀(x+net)−p₀(x),取代常數 λ·net。
+    預設不開(`impact=None` 時 solve_day 還是走原本的線性公式),所有既有實驗
+    (v3/v4/hetero/scales/compare.py)不受影響。只有顯式傳 `impact=` 才會用真曲線。
+    小車隊(≤100MW)兩者數字應該幾乎相同——那是這個開關的第一個 self-check。
+
 未做(知道但不在本檔範圍):
-  - 接進模擬器。λ(x) 是**局部**斜率,車隊小(≤100MW)時線性近似成立;GW 級會沿曲線
-    跑很長一段,得改成 p = p₀(x+Q) 直接查曲線(非線性,要動 perfect() 的 LP)。
   - act−p₀ **不能**當市場力:p₀ 是 act 的擬合,兩者相減必然是零均值噪音。真的市場力
     要拿「全員出邊際成本」的競爭反事實比 act,那需要成本型 fringe(不在這裡)。
+  - v3 的 Cournot 自制(`cournot_br`)還沒跟著換:它內化自身衝擊用的 `lam_wi` 仍是
+    常數線性近似,不會隨 `impact=` 換成局部曲率。同時用 `br=cournot_br` 和非線性
+    `impact=` 時,大玩家的自制強度會算錯——這是下一步,不在這次的開關範圍內。
 
 用法:python new_src/agents/fringe.py [DK1|DK2]   (預設 DK1)
 """
@@ -175,8 +183,37 @@ def lambda_at(x, fringe: pd.DataFrame):
     """給殘餘負載 x,回傳該點的局部 λ(x)(線性內插,超出範圍夾到端點)。
 
     注意這是**局部**斜率:p ≈ p₀ + λ(x)·Q 只在 Q 小到不會沿曲線跑遠時成立。
-    GW 級車隊要改成直接查 p₀(x+Q)(見模組 docstring「未做」)。"""
+    GW 級車隊要改成直接查 p₀(x+Q)——見下面 `nonlinear_impact()`。"""
     return np.interp(x, fringe["x"].values, fringe["lam_local"].values)
+
+
+def p0_at(x, fringe: pd.DataFrame):
+    """給殘餘負載 x,回傳 fringe 的 p₀(x)(線性內插,超出範圍夾到端點)。
+    `lambda_at()` 查的是斜率,這支查的是水準——`nonlinear_impact()` 靠這支組出來。"""
+    return np.interp(x, fringe["x"].values, fringe["p0"].values)
+
+
+def nonlinear_impact(x, fringe: pd.DataFrame):
+    """把 fringe 曲線包成 `v2_multi.solve_day(..., impact=)` 吃得下的形狀。
+
+    回傳一個 `net(MW 陣列) -> Δp(€/MWh 陣列)` 的函式,算法是
+        impact(net) = p₀(x + net) − p₀(x)
+    直接查真曲線,不是常數斜率外推——車隊淨量 net 沿曲線跑多遠都對。
+
+    x = 這個時段(例如一週)每小時的殘餘負載,長度要跟 solve_day 的 price 對齊
+    (net 也是每小時一個數字,兩者逐時相減)。net 小、x 落在曲線平坦段時,
+    這個函式應該和線性 `lam·net` 幾乎沒有差異——那是它的第一個 self-check
+    (見 v2_multi.py 的 `_demo_nonlinear_impact`)。
+
+    ⚠️ 只換了 solve_day 的「出清價怎麼算」。v3 的 `cournot_br` 內化自身衝擊用的
+    `lam_wi` 還是常數,沒有跟著換成局部曲率(見模組 docstring)。"""
+    x = np.asarray(x, float)
+    p0_x = p0_at(x, fringe)
+
+    def impact(net) -> np.ndarray:
+        return p0_at(x + np.asarray(net, float), fringe) - p0_x
+
+    return impact
 
 
 def fringe_by_fuel(df: pd.DataFrame) -> pd.DataFrame:
