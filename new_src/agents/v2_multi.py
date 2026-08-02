@@ -44,7 +44,7 @@ def _per_agent(spec, n, default):
     return [arr] * n
 
 
-def solve_day(price, weights, lam, rounds=15, tol=1e-3, belief=None, br=None):
+def solve_day(price, weights, lam, rounds=15, tol=1e-3, belief=None, br=None, impact=None):
     """一週的均衡:輪流(Gauss-Seidel)最佳反應。weights[i] = 玩家 i 的體量。
     回傳每家「每單位體量」的排程 C/D、出清價、用了幾回合。
 
@@ -58,14 +58,24 @@ def solve_day(price, weights, lam, rounds=15, tol=1e-3, belief=None, br=None):
                          (A 家 price-taker、B 家 Cournot 自制…)
 
     belief 的舊語意保留:None = v2.1 上帝視角,共用 1-D 陣列 = v2.2 全員同一個預測。
-    不論信什麼,**結算一律用真實出清價**(真實價 + λ×實際淨量)——信錯就會被罰。
+    不論信什麼,**結算一律用真實出清價**——信錯就會被罰。
 
     br(seen, lam_wi) -> (c, d)。預設 price-taker(吃 perfect 的 LP、無視自己的
-    λ·w_i);v3 傳 Cournot 版進來內化自身衝擊。"""
+    λ·w_i);v3 傳 Cournot 版進來內化自身衝擊。
+
+    impact:價格衝擊怎麼算,**開關**,預設 None → 線性 `lam·net`(v2.1/v2.2 原本的
+    公式,真實價 + λ×淨量)。要換成非線性(車隊淨量沿曲線跑遠,GW 級才需要),
+    傳一個 `net(MW 陣列) -> Δp(€/MWh 陣列)` 的函式,例如 `agents/fringe.py` 的
+    `nonlinear_impact(x, fringe)`(用真實 fringe 曲線 p₀(x+net)−p₀(x) 取代常數斜率,
+    見 MULTI_AGENT_MARKET.md §3.9)。**不傳就完全是舊行為**——v3/v4/hetero/scales/
+    compare.py 都沒傳這個參數,不受影響。⚠️ 只換了出清價這一層;br=cournot_br 的
+    自制強度(lam_wi)還是常數,沒有跟著 impact 換成局部曲率,兩者同時用時大玩家
+    的自制量會算錯(見 fringe.py 模組 docstring)。"""
     w = np.asarray(weights, float)
     N, H = len(w), len(price)
     bels = _per_agent(belief, N, np.asarray(price, float))  # 每家的信念價
     brs = _per_agent(br, N, lambda seen, lam_wi: perfect(seen))  # 每家的最佳反應
+    impact_fn = impact if impact is not None else (lambda net: lam * net)
     C = np.zeros((N, H))
     D = np.zeros((N, H))
     used = rounds
@@ -74,14 +84,14 @@ def solve_day(price, weights, lam, rounds=15, tol=1e-3, belief=None, br=None):
         for i in range(N):  # 輪流,馬上看到別人這輪的新決定
             net = (w[:, None] * (C - D)).sum(0)  # 全體體量加權淨量
             others = net - w[i] * (C[i] - D[i])  # 扣掉自己 = 別人的加權淨量
-            seen = bels[i] + lam * others  # 我信的價,被別人的淨量推移
+            seen = bels[i] + impact_fn(others)  # 我信的價,被別人的淨量推移
             c, d = brs[i](seen, lam * w[i])
             change += np.abs(c - C[i]).sum() + np.abs(d - D[i]).sum()
             C[i], D[i] = c, d
         if change < tol:  # 沒人想再改 → 收斂
             used = r + 1
             break
-    cleared = price + lam * (w[:, None] * (C - D)).sum(0)  # 出清價(真實價+全體加權衝擊)
+    cleared = price + impact_fn((w[:, None] * (C - D)).sum(0))  # 出清價(真實價+全體衝擊)
     return C, D, cleared, used
 
 
@@ -124,6 +134,7 @@ def demo():
     )
     print(f"  v2 belief ok: 上帝視角 €{god:.0f} > 瞎預測 €{blind:.0f}(預測誤差的代價)")
     _demo_heterogeneous(p)
+    _demo_nonlinear_impact(p)
 
 
 def _demo_heterogeneous(p):
@@ -152,6 +163,49 @@ def _demo_heterogeneous(p):
     print(
         f"  v2 異質 ok: 預測品質 完美€{rev[0]:.0f} > 雜訊€{rev[1]:.0f} > 瞎€{rev[2]:.0f}"
         "(同體量,差異純粹來自資訊)"
+    )
+
+
+def _demo_nonlinear_impact(p):
+    """`impact=` 開關的 self-check(見 `agents/fringe.py` 的 `nonlinear_impact`)。
+    本地 import fringe(需要 sklearn),不用這個開關的呼叫端不會被迫裝它。
+
+    驗兩件事:①車隊小、x 落在曲線平坦段時,非線性應該幾乎等於線性(近似沒被破壞,
+    這是開關能安全預設關閉的理由);②車隊大到把 x 推進曲線陡段時,非線性衝擊要比
+    常數線性外推更大(這正是要開這個開關的理由,見 MULTI_AGENT_MARKET.md §3.9)。"""
+    import pandas as pd
+
+    sys.path.insert(0, os.path.dirname(__file__))
+    from fringe import fit_fringe, nonlinear_impact
+
+    # 合成一條凸 fringe(曲棍球桿:低段平、x 大後翹陡),不依賴真實資料
+    rng = np.random.default_rng(2)
+    x = rng.uniform(-1000, 3500, 20000)
+    price = 20 + 0.01 * x + 8e-6 * np.clip(x, 0, None) ** 2 + rng.normal(0, 5, len(x))
+    fr = fit_fringe(pd.DataFrame({"price": price, "x": x}))
+
+    lam_flat = 0.01  # 平坦段(x 遠小於 2000)大約的局部斜率,當線性對照組
+    x_flat = np.full(len(p), 200.0)
+    C0, D0, cl0, _ = solve_day(p, [1, 1, 1], lam=lam_flat)
+    C1, D1, cl1, _ = solve_day(
+        p, [1, 1, 1], lam=lam_flat, impact=nonlinear_impact(x_flat, fr)
+    )
+    assert np.allclose(cl0, cl1, atol=3), (
+        f"平坦段、小車隊時非線性應接近線性,差 {np.abs(cl0 - cl1).max():.2f}"
+    )
+
+    x_steep = np.full(len(p), 2800.0)  # 陡段
+    Cs, Ds, cls_, _ = solve_day(
+        p, [80, 80, 80], lam=lam_flat, impact=nonlinear_impact(x_steep, fr)
+    )
+    Cl, Dl, cll, _ = solve_day(p, [80, 80, 80], lam=lam_flat)  # 同體量,仍用常數斜率
+    h = _peak_hour(p)
+    assert abs(p[h] - cls_[h]) > abs(p[h] - cll[h]), (
+        "陡段、大車隊時非線性衝擊應比常數線性外推更大(不能用固定 λ 的地方)"
+    )
+    print(
+        f"  impact= 開關 ok: 平坦段小車隊≈線性(差€{np.abs(cl0 - cl1).max():.1f});"
+        f"陡段大車隊非線性壓尖峰€{p[h] - cls_[h]:.0f} > 線性外推€{p[h] - cll[h]:.0f}"
     )
 
 
