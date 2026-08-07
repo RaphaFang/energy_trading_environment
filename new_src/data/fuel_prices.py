@@ -71,24 +71,42 @@ def pull_yahoo() -> None:
 
 
 def load_manual() -> None:
-    """吃 new_data/fuel/manual/ 裡任何 Date+Price 的 CSV(補碳價 2019→2021-10)。
+    """吃 new_data/fuel/manual/ 裡任何 Date+價格欄的 CSV → 碳價全期序列。
 
-    來源建議:Sandbag carbon price viewer、EEA datahub、investing.com 的
-    Carbon Emissions Futures 歷史資料匯出。丟進去重跑就會被吃掉。
+    現行來源:**ICAP Allowance Price Explorer** 匯出(EU ETS,2019-09 起近日頻)。
+    用它的 `Primary Market`(拍賣結算價)——`Secondary Market` 只有 322 天太稀疏。
+    與 Yahoo `CO2.L` 在重疊期 corr 0.986、中位差 €1.41(拍賣 vs 期貨基差)。
+    其他可用來源:Sandbag carbon price viewer、EEA datahub、investing.com。
+
+    ⚠️ ICAP 匯出的第一行是標題列,真正的欄名在第二行 → 認不到 date 欄就跳一行重讀。
     """
     csvs = glob.glob(str(MANUAL / "*.csv"))
     if not csvs:
-        print(f"  (manual/ 沒有 CSV → 碳價仍只有 2021-10 起,涵蓋約 52%)")
+        print(f"  (manual/ 沒有 CSV → 碳價退回 Yahoo CO2.L,只有 2021-10 起約 52%)")
         return
     for f in csvs:
         raw = pd.read_csv(f)
+        if not any("date" in c.lower() for c in raw.columns):
+            raw = pd.read_csv(f, skiprows=1)  # ICAP 匯出:標題列在欄名上面
         date_col = next(
             c for c in raw.columns if "date" in c.lower() or "time" in c.lower()
         )
-        price_col = next(
+        # 候選價格欄 → 取**非空值最多**的那個(ICAP 的 Secondary Market 稀疏,
+        # Primary Market 才是近日頻)。先做關鍵字過濾,否則會選到恆為 1 的匯率欄。
+        cand = [
             c
             for c in raw.columns
-            if c != date_col and ("price" in c.lower() or "close" in c.lower())
+            if c != date_col
+            and any(k in c.lower() for k in ("price", "close", "market"))
+            and "exchange" not in c.lower()
+        ]
+        price_col = max(
+            cand,
+            key=lambda c: (
+                pd.to_numeric(raw[c].astype(str).str.replace(",", ""), errors="coerce")
+                .notna()
+                .sum()
+            ),
         )
         s = (
             pd.Series(
@@ -106,7 +124,8 @@ def load_manual() -> None:
             p, engine="pyarrow", compression="snappy"
         )
         print(
-            f"✓ manual 碳價: {s.index.min().date()} → {s.index.max().date()} ({len(s)} 天) → {p}"
+            f"✓ manual 碳價 [{Path(f).name} → 欄位 '{price_col}']: "
+            f"{s.index.min().date()} → {s.index.max().date()} ({len(s)} 天) → {p}"
         )
 
 

@@ -23,9 +23,9 @@
 蓄熱槽讓業者選**何時**產熱 → 等於把電力供給曲線在時間上搬移。
 電價為負時,電鍋爐/熱泵反過來吃電產熱 → 這是 power-to-heat 吸收負電價的機制。
 
-⚠️ **參數是量級佔位值,不是查證數字**(見 DEFAULT 的註解)。投論文前必須換成
-丹麥能源署 Technology Catalogue("Technology Data for Generation of Electricity and
-District Heating")的實際值。
+✅ **技術參數已是 DEA Technology Catalogue 真值**(2026-08-07,經 `heat/dea.py`)。
+仍不是目錄值的兩類:①**排放因子**(目錄沒有,是燃料屬性,見 ARCHETYPES)②**容量與熱網
+規模的對齊**(目錄給的是單一機組典型值)。
 
 用法:python new_src/heat/chp.py    (self-check + 真實 DK1 電價的示範排程)
 """
@@ -45,40 +45,77 @@ sys.path.insert(0, os.path.dirname(__file__))
 class Plant:
     """一個 DH 系統的技術與成本參數。
 
-    ⚠️ 全部是**量級佔位值**,待 Technology Catalogue 校準。標 [TC] 的是該文件有的欄位。
+    **預設值 = DEA Technology Catalogue 的木片抽汽式機組**
+    (`09a Wood Chips extract. plant`, year=2020, est=ctrl),2026-08-07 從佔位值換掉。
+    要別的燃料或敏感度區間用 `dea_plant()`,不要手改這裡。
+
+    佔位值錯得最離譜的是 `cb`:原本猜 0.75,目錄真值 0.45(木片)/0.59(顆粒)/
+    0.84(煤)/1.80(氣 CC)—— **不只高估一倍,而且真值隨技術差 4 倍**,不存在一個
+    「通用 Cb」。cb 是背壓線斜率 → 直接決定給定熱量下機組能少發多少電 = 彈性大小。
+
+    ⚠️ **容量欄位(p_max/eb_max/hp_max/pb_max/s_max/s_rate)是目錄的「單一機組典型值」**,
+    不是熱網的實際裝置量。真實 DH 系統是多台機組併聯,而且機組尺寸要跟熱需求規模對齊。
+    這些值與熱需求的匹配問題**尚未解決**(見 STATUS.md §7 第 5 點)。
     """
 
-    p_max: float = 400.0  # [TC] CHP 等效凝汽容量 MW_e
-    cb: float = 0.75  # [TC] 背壓係數(功熱比下界),大型丹麥 CHP 約 0.5–1.0
-    cv: float = 0.15  # [TC] 抽汽損失係數:每產 1MW_th 熱少發 0.15MW_e 電
-    eta_el: float = 0.45  # [TC] 凝汽模式發電效率
+    p_max: float = 258.2  # [TC] CHP 等效凝汽容量 MW_e(單一機組)
+    cb: float = 0.45  # [TC] 背壓係數(功熱比下界)
+    cv: float = 0.14  # [TC] 抽汽損失係數:每產 1MW_th 熱少發 0.14MW_e 電
+    eta_el: float = 0.409  # [TC] 電效率(net, annual average)
     # 排放因子 tCO2/MWh_fuel,**熱電機組與尖峰鍋爐分開設**(2026-08-06 拆開)。
     # 原本共用一個 ef=0.20 → 對生質機組課了不存在的碳成本,系統性高估 CHP 成本、
     # 低估 CHP 競爭力,進而**高估 power-to-heat 的價值**。量級參考 heat/fuelmix.py:
     # DK1 2025 出力加權隱含 ef ≈ 0.149(生質 32.8% / 煤 27.8% / 氣 23.7% / 廢棄物 13.2%)。
     # 單一機組應該用**單一燃料**的值,不是隊伍平均——見 ARCHETYPES。
-    ef_chp: float = 0.20  # 預設:天然氣機組
+    ef_chp: float = 0.0  # 生質(EU ETS 零碳);目錄裡沒有排放因子,見 ARCHETYPES
     ef_pb: float = 0.20  # 尖峰鍋爐(丹麥常見天然氣或輕油)
-    eb_max: float = 100.0  # 電鍋爐熱容量 MW_th
-    eta_eb: float = 0.99  # 電鍋爐效率
-    hp_max: float = 50.0  # 熱泵熱容量 MW_th
-    cop_ref: float = 3.2  # 熱泵 COP 參考值(@ 7°C);實際隨氣溫變,見 cop_from_temp
-    pb_max: float = 1e4  # 尖峰鍋爐(保證可行性;真實系統一定有備援)
-    eta_pb: float = 0.95  # 尖峰鍋爐效率
-    s_max: float = 3000.0  # 蓄熱槽容量 MWh_th(丹麥大型槽 ~10–20 小時尖峰負載)
-    s_rate: float = 300.0  # 蓄熱槽充/放速率 MW_th
-    s_loss: float = 0.002  # 每小時散熱損失比例(槽保溫很好,~0.2%/h)
+    eb_max: float = 20.0  # [TC] 電鍋爐熱容量 MW_th(41 Electric boiler, large,單台)
+    eta_eb: float = 0.99  # [TC] 電鍋爐效率
+    hp_max: float = 10.0  # [TC] 熱泵熱容量 MW_th(40 Comp. hp, airsource 10 MW,單台)
+    cop_ref: float = 2.8  # [TC] 熱泵 COP 參考值(@ 7°C);隨氣溫變,見 cop_from_temp
+    # 尖峰鍋爐**刻意不用目錄值**:'44 Natural Gas DH Only' 的單台容量只有 5.25 MW_th,
+    # 拿它當 pb_max 會讓 LP 在寒冬直接無解。這個變數在模型裡的角色是**可行性後備**
+    # (真實熱網一定有足夠備援鍋爐,只是台數多),不是某一台機組的銘牌值。
+    pb_max: float = 1e4
+    eta_pb: float = 1.03  # [TC] 尖峰鍋爐效率(>1 是因為目錄以低位發熱值 LHV 計)
+    s_max: float = 2880.0  # [TC] 蓄熱槽容量 MWh_th(141b Large TTES)
+    s_rate: float = 288.0  # [TC] 蓄熱槽充/放速率 MW_th
+    s_loss: float = 0.0025  # [TC] 每小時散熱損失比例(目錄給 %/day ÷ 24)
 
 
-# 依燃料別的原型機組。**一台機組燒一種燃料**,所以排放因子要用該燃料的值,
-# 不能用 heat/fuelmix.py 算出的隊伍加權平均(那是虛構的「平均機組」)。
-# ⚠️ 排放因子是量級值,待 Technology Catalogue 校準;其餘技術參數仍是佔位值。
+# 依燃料別的**排放因子** tCO2/MWh_fuel。**目錄裡沒有這個**(排放是燃料屬性不是技術
+# 屬性)→ 這三個仍是量級值,不是目錄真值。一台機組燒一種燃料,所以要用該燃料的值,
+# 不能用 heat/fuelmix.py 的隊伍加權平均(那是虛構的「平均機組」)。
 # ⚠️ 燃料**價格**不在這裡(它隨時間變,由 solve(fuel_price=) 傳入)。
 ARCHETYPES = {
     "gas": dict(ef_chp=0.20, ef_pb=0.20),  # 天然氣熱電 + 天然氣尖峰鍋爐
     "biomass": dict(ef_chp=0.0, ef_pb=0.20),  # 生質熱電(EU ETS 零碳)+ 天然氣尖峰鍋爐
     "coal": dict(ef_chp=0.34, ef_pb=0.20),  # 燃煤熱電;DK1 2025 仍佔 27.8%
 }
+
+# DEA 技術原型 → 燃料別(決定排放因子)。鍵對應 dea.CHP_ARCHETYPES。
+_ARCH_FUEL = {
+    "wood_chips": "biomass",
+    "wood_pellets": "biomass",
+    "gas_cc": "gas",
+    "coal": "coal",
+}
+
+
+def dea_plant(arch: str = "wood_chips", est: str = "ctrl", **over) -> Plant:
+    """直接從 Technology Catalogue 建一個 Plant(技術參數全是目錄真值)。
+
+    `est='lower'/'upper'` 就是目錄自帶的區間 → **敏感度分析不用另外設計情境**。
+    `**over` 覆寫個別欄位(例如把容量對齊到熱網規模)。
+
+    `pb_max` 一律保留 Plant 的可行性後備值,不用目錄的單台 5.25 MW_th(理由見上)。
+    排放因子來自 ARCHETYPES,不是目錄。
+    """
+    import dea  # 延後匯入:chp.py 不該因為缺 new_data/DEA_data 就 import 失敗
+
+    p = dea.plant_params(dea.CHP_ARCHETYPES[arch], est=est)
+    p.pop("pb_max")
+    return Plant(**{**p, **ARCHETYPES[_ARCH_FUEL[arch]], **over})
 
 
 def cop_from_temp(temp, cop_ref: float = 3.2, t_ref: float = 7.0) -> np.ndarray:
@@ -255,13 +292,32 @@ def demo() -> None:
         f"  COP ok: −10°C {cold:.2f} < +10°C {mild:.2f}(冷天熱泵最不划算,而那時熱需求最高)"
     )
 
+    # ⑦ Plant 的預設值必須真的等於目錄值 —— 上面那些數字是手抄的,這行防止它們默默漂掉
+    if os.path.exists("new_data/DEA_data"):
+        want = dea_plant("wood_chips")
+        drift = {
+            f: (getattr(pl, f), getattr(want, f))
+            for f in pl.__dataclass_fields__
+            if abs(getattr(pl, f) - getattr(want, f)) > 1e-9
+        }
+        assert not drift, f"Plant 預設值與 DEA 目錄不一致(手抄漂掉了):{drift}"
+        # 背壓係數隨技術差 4 倍 → 不存在「通用 Cb」,原本猜 0.75 高估木片近一倍
+        cbs = {a: dea_plant(a).cb for a in _ARCH_FUEL}
+        assert max(cbs.values()) / min(cbs.values()) > 3, f"Cb 應隨技術大幅變動:{cbs}"
+        print(
+            "  DEA ok: Plant 預設 == 目錄木片抽汽值;各原型 Cb = "
+            + ", ".join(f"{a} {v:.2f}" for a, v in cbs.items())
+        )
+
 
 def _real_demo() -> None:
-    """用真實 DK1 電價 + 度日熱需求跑一個月,看行為合不合理。"""
-    import glob
+    """用真實 DK1 電價 + 度日熱需求跑一個月,看行為合不合理。
 
+    **原型與燃料價必須配對**:燒天然氣的機組要配 TTF、燒煤的要配 API2。
+    生質(木片/顆粒)**沒有燃料價來源**(無國際期貨,需丹麥能源署統計)→ 目前無法跑,
+    硬拿天然氣價代打會讓成本水準完全失真(曾跑出負的單位供熱成本)。
+    """
     import duckdb
-    import pandas as pd
     from demand import heat_demand
 
     if not os.path.exists("new_data/energy.duckdb"):
@@ -270,18 +326,30 @@ def _real_demo() -> None:
     con = duckdb.connect("new_data/energy.duckdb", read_only=True)
     d = con.execute(
         "SELECT timestamp_utc, y_price_eur AS price, temperature_2m AS temp, "
-        "ttf_gas_eur_mwh AS gas FROM training WHERE area='DK1' "
+        "ttf_gas_eur_mwh AS gas, api2_coal_eur_mwh AS coal, eua_co2_eur_t AS co2 "
+        "FROM training WHERE area='DK1' "
         "AND y_price_eur IS NOT NULL AND temperature_2m IS NOT NULL "
         "AND timestamp_utc >= TIMESTAMP '2024-01-01' AND timestamp_utc < TIMESTAMP '2024-02-01' "
         "ORDER BY timestamp_utc"
     ).fetchdf()
     con.close()
     # 熱需求:用全期校準的度日代理,取這個月;再縮到單一 DH 系統的規模(佔 DK1 的 8%)
-    q_all = heat_demand(d["temp"].to_numpy())
-    q = q_all * 0.08
-    gas = d["gas"].fillna(d["gas"].median()).to_numpy()
+    q = heat_demand(d["temp"].to_numpy()) * 0.08
     cop = cop_from_temp(d["temp"].to_numpy())
-    r = solve(d["price"].to_numpy(), q, Plant(), fuel_price=gas, cop=cop)
+    gas = d["gas"].ffill().bfill().to_numpy()
+    co2 = d["co2"].ffill().bfill().to_numpy()  # 真實 EUA(2026-08-07 起全期覆蓋)
+    fuels = {  # 原型 → 該燒的燃料價(EUR/MWh_fuel)
+        "gas_cc": gas,
+        "coal": d["coal"].ffill().bfill().to_numpy(),
+    }
+    r = solve(
+        d["price"].to_numpy(),
+        q,
+        dea_plant("gas_cc"),
+        fuel_price=gas,
+        co2_price=co2,
+        cop=cop,
+    )
 
     p = d["price"].to_numpy()
     neg = p < 0
@@ -302,15 +370,31 @@ def _real_demo() -> None:
     print(
         f"  電力市場淨收益 €{r['el_net']:,.0f}(未計熱收入 → 負值正常:燒燃料是為了供熱)"
     )
-    print(
-        f"  **單位供熱淨成本 €{r['heat_cost_per_mwh']:.1f}/MWh_th**"
-        "  ← 可比指標;丹麥 DH 生產成本量級 €20–50,扣電收入後更低"
-    )
     hi, lo = p > np.percentile(p, 75), p < np.percentile(p, 25)
     print(
         f"  CHP 發電:高價四分位 {r['P'][hi].mean():.0f} MW_e vs 低價四分位 {r['P'][lo].mean():.0f} MW_e"
         "  ← 熱約束下仍跟著價格走 = 蓄熱槽在搬移熱的生產時點"
     )
+    # 燃料價有真值的兩個原型並排(碳價已是真實 EUA)。生質缺價,故意不列。
+    print("\n  單位供熱淨成本(原型 × 對應燃料價 × 真實 EUA):")
+    for a, fp in fuels.items():
+        # 尖峰鍋爐一律燒天然氣(見 ARCHETYPES 的 ef_pb)→ 煤機組也要用氣價當 pb 燃料
+        rr = solve(
+            d["price"].to_numpy(),
+            q,
+            dea_plant(a),
+            fuel_price=fp,
+            fuel_price_pb=gas,
+            co2_price=co2,
+            cop=cop,
+        )
+        pl = dea_plant(a)
+        print(
+            f"    {a:8} 燃料均 €{fp.mean():5.1f}/MWh_fuel → "
+            f"**€{rr['heat_cost_per_mwh']:6.1f}/MWh_th**(CHP 均 {rr['P'].mean():.0f} MW_e,"
+            f"機組 {pl.p_max:.0f} MW_e / 熱網均 {q.mean():.0f} MW_th = {pl.p_max / q.mean():.1f}×)"
+        )
+    print("    biomass  ✗ 無燃料價來源(木片/顆粒無國際期貨)→ 目前跑不了,不是模型問題")
 
 
 if __name__ == "__main__":

@@ -110,7 +110,13 @@ CHP_ARCHETYPES = {
     "wood_chips": "09a Wood Chips extract. plant",
     "wood_pellets": "09b Wood Pellets extract. plant",
     "gas_cc": "05 Gas turb. CC, steam extract.",
+    "coal": "01 Coal CHP",
 }
+
+# 🚩 **垃圾焚化(WtE)在目錄裡全部是背壓式**('08 WtE CHP, Large/Medium/Small'),
+# 秸稈(09c Straw)也是。→ 這些機組**沒有抽汽可行域,熱電完全綁死**,不能當彈性來源。
+# WtE 佔 DK1 熱電 13.2%、在 DK2(Amager/Vestforbrænding)更吃重 → 車隊有效彈性
+# 比「總容量」看起來的少。要納入必須先在 chp.py 實作背壓式的等式約束。
 
 
 def plant_params(
@@ -146,12 +152,21 @@ def plant_params(
             f"請改用抽汽式版本(見 CHP_ARCHETYPES),或先在 chp.py 實作背壓式的等式約束。"
         )
     g = lambda ws, p: get(ws, p, year, est)
+
+    def eta_el(ws: str) -> float:
+        # 多數工作表給「annual average」,但有些(例:'01 Coal CHP')只有「name plate」。
+        # name plate 是額定點效率、略高於年均 → 用得到的那個,並在下面註記差異。
+        try:
+            return g(ws, "Electrical efficiency (net, annual average)")
+        except KeyError:
+            return g(ws, "Electrical efficiency (net, name plate)")
+
     day_loss = get(store_ws, "Energy losses during storage", year, est, storage=True)
     return dict(
         p_max=g(chp_ws, "Generating capacity for one unit [MW_e]"),
         cb=g(chp_ws, "Cb coefficient"),
         cv=g(chp_ws, "Cv coefficient"),
-        eta_el=g(chp_ws, "Electrical efficiency (net, annual average)"),
+        eta_el=eta_el(chp_ws),
         eb_max=g(eb_ws, "Generating capacity for one unit [MW_h]"),
         eta_eb=g(eb_ws, "Heat efficiency (net, annual average)"),
         hp_max=g(hp_ws, "Generating capacity for one unit [MW_h]"),
@@ -184,7 +199,9 @@ def demo() -> None:
     )
 
     # ② 背壓式必須被擋下來(它沒有抽汽可行域)
-    assert is_back_pressure("09a Wood Chips, Large 50 degree"), "木片大型是背壓式,應被判定為 True"
+    assert is_back_pressure("09a Wood Chips, Large 50 degree"), (
+        "木片大型是背壓式,應被判定為 True"
+    )
     assert not is_back_pressure("09a Wood Chips extract. plant"), "抽汽式不該被判成背壓"
     try:
         plant_params("09a Wood Chips, Large 50 degree")
@@ -227,7 +244,7 @@ def main() -> None:
         except KeyError as e:
             print(f"  {lab:<18}(缺參數:{e})")
 
-    print("\n=== 對照:chp.Plant 目前的佔位值 ===")
+    print("\n=== 對照:chp.Plant 的預設值(2026-08-07 起 == 木片抽汽,不再是佔位值)===")
     from chp import Plant
 
     d = Plant()

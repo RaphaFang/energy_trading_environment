@@ -94,14 +94,20 @@ def build_fuel() -> pd.DataFrame | None:
     gas = _series("ttf_gas_eur_mwh")
     if gas is None:
         return None
-    co2 = _series("eua_co2_eur_t")
-    man = _series("eua_co2_eur_t_manual")  # optional early-years backfill
-    if man is not None and co2 is not None:
-        co2 = pd.concat([man[man.index < co2.index.min()], co2]).sort_index()
+    # 碳價:優先用 manual(ICAP EU ETS,2019-09 起全期),**整段取代**而不是只補頭。
+    # 接兩個來源會在 2021-10(Yahoo CO2.L 上市日)留一個 €1-2 的水準跳動,而那正好
+    # 是碳價起飛的位置 → 單一來源比較乾淨。沒有 manual 才退回 Yahoo(僅 52% 覆蓋)。
+    co2 = _series("eua_co2_eur_t_manual")
+    if co2 is None:
+        co2 = _series("eua_co2_eur_t")
 
     daily = pd.DataFrame({"ttf_gas_eur_mwh": gas})
     if co2 is not None:
-        daily["eua_co2_eur_t"] = co2
+        # 對齊到 gas 的交易日格線並 ffill:碳價的交易日曆與 TTF 不完全相同,
+        # 直接指派會在對不上的日子留 NaN,而 merge_asof 只挑「最近一列」不會補洞。
+        daily["eua_co2_eur_t"] = (
+            co2.reindex(co2.index.union(gas.index)).ffill().reindex(gas.index)
+        )
     # 煤:原始檔是 USD/公噸,**換算在這裡做不在儲存層做**(換算規則改了不用重抓)。
     #   EUR/MWh_fuel = (USD/t) ÷ (USD per EUR) ÷ (MWh/t)
     coal_usd = _series("api2_coal_usd_t")

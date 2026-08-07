@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(__file__))
-from chp import ARCHETYPES, Plant, cop_from_temp, solve  # noqa: E402
+from chp import cop_from_temp, dea_plant, solve  # noqa: E402
 from demand import heat_demand  # noqa: E402
 
 # 代表性 DH 系統的規模:取 DK1 全區熱需求的 8%(≈一個中型丹麥城市)。
@@ -38,7 +38,8 @@ def load_year(year: int, area: str = "DK1"):
     con = duckdb.connect("new_data/energy.duckdb", read_only=True)
     d = con.execute(
         "SELECT timestamp_utc, y_price_eur AS price, temperature_2m AS temp, "
-        "ttf_gas_eur_mwh AS gas, eua_co2_eur_t AS co2 FROM training "
+        "ttf_gas_eur_mwh AS gas, api2_coal_eur_mwh AS coal, "
+        "eua_co2_eur_t AS co2 FROM training "
         f"WHERE area='{area}' AND y_price_eur IS NOT NULL AND temperature_2m IS NOT NULL "
         f"AND timestamp_utc >= TIMESTAMP '{year}-01-01' "
         f"AND timestamp_utc < TIMESTAMP '{year + 1}-01-01' ORDER BY timestamp_utc"
@@ -47,15 +48,16 @@ def load_year(year: int, area: str = "DK1"):
     ts = pd.to_datetime(d["timestamp_utc"], utc=True)  # duckdb 可能已帶時區
     hour = ts.dt.tz_convert("Europe/Copenhagen").dt.hour.to_numpy()
     q = heat_demand(d["temp"].to_numpy(), hour=hour) * SYSTEM_SHARE
-    gas = d["gas"].fillna(d["gas"].median()).to_numpy()
-    # 真實 EUA 碳價(2026-08-06 接上;先前寫死 70 €/t)
+    gas = d["gas"].ffill().bfill().to_numpy()
+    coal = d["coal"].ffill().bfill().to_numpy()  # API2,2026-08-07 才進 duckdb
+    # 真實 EUA 碳價(2026-08-06 接上,2026-08-07 換 ICAP 後全期覆蓋;先前寫死 70 €/t)
     co2 = d["co2"].ffill().bfill().to_numpy()
-    return d, q, gas, co2, cop_from_temp(d["temp"].to_numpy())
+    return d, q, gas, coal, co2, cop_from_temp(d["temp"].to_numpy())
 
 
 def main() -> None:
     year = int(sys.argv[1]) if len(sys.argv) > 1 else 2024
-    d, q, gas, co2, cop = load_year(year)
+    d, q, gas, coal, co2, cop = load_year(year)
     p = d["price"].to_numpy()
     print(f"=== 彈性價值拆解 DK1 {year}(代表性 DH 系統,{len(d):,} 小時)===")
     print(
@@ -68,54 +70,57 @@ def main() -> None:
     )
 
     def variants_for(arch: str) -> dict:
-        a = ARCHETYPES[arch]
+        """同一台 DEA 目錄機組,逐一關掉彈性選項。**技術參數全是目錄真值**(2026-08-07)。"""
         return {
-            "① 全部都有(基準)": Plant(**a),
-            "② 拿掉蓄熱槽": Plant(s_max=0.0, s_rate=0.0, **a),
-            "③ 拿掉電鍋爐": Plant(eb_max=0.0, **a),
-            "④ 拿掉熱泵": Plant(hp_max=0.0, **a),
-            "⑤ 拿掉全部 power-to-heat": Plant(eb_max=0.0, hp_max=0.0, **a),
-            "⑥ 只剩 CHP + 尖峰鍋爐(零彈性)": Plant(
-                s_max=0.0, s_rate=0.0, eb_max=0.0, hp_max=0.0, **a
+            "① 全部都有(基準)": dea_plant(arch),
+            "② 拿掉蓄熱槽": dea_plant(arch, s_max=0.0, s_rate=0.0),
+            "③ 拿掉電鍋爐": dea_plant(arch, eb_max=0.0),
+            "④ 拿掉熱泵": dea_plant(arch, hp_max=0.0),
+            "⑤ 拿掉全部 power-to-heat": dea_plant(arch, eb_max=0.0, hp_max=0.0),
+            "⑥ 只剩 CHP + 尖峰鍋爐(零彈性)": dea_plant(
+                arch, s_max=0.0, s_rate=0.0, eb_max=0.0, hp_max=0.0
             ),
         }
 
-    # 燃料原型:同一套熱需求與電價,只換 CHP 的燃料/排放因子。
-    # ⚠️ 生質原型的燃料**價格**目前仍用天然氣價當代理(手上沒有木片/顆粒價格序列)
-    #    → 生質那一欄只隔離了「碳成本」的影響,沒有隔離燃料價差異。
+    # 燃料原型:同一套熱需求與電價,只換 CHP 的技術/燃料/排放因子。
+    # **原型與燃料價必須配對**——先前生質欄用天然氣價當代理,跑出負的基準成本,
+    # 那個水準不可用。現在只跑燃料價有真值的兩個;尖峰鍋爐一律燒氣(見 ARCHETYPES)。
+    FUEL_OF = {"gas_cc": gas, "coal": coal}
     all_res = {}
-    for arch in ("gas", "biomass", "coal"):
+    for arch, fp in FUEL_OF.items():
         all_res[arch] = {
-            lab: solve(p, q, pl, fuel_price=gas, co2_price=co2, cop=cop)
+            lab: solve(
+                p, q, pl, fuel_price=fp, fuel_price_pb=gas, co2_price=co2, cop=cop
+            )
             for lab, pl in variants_for(arch).items()
         }
 
     print(f"  {'情境':<34}" + "".join(f"{a:>12}" for a in all_res))
-    for lab in variants_for("gas"):
+    for lab in variants_for("gas_cc"):
         row = "".join(
-            f"€{all_res[a][lab]['heat_cost_per_mwh']:>10.2f}" for a in all_res
+            f"€{all_res[a][lab]['heat_cost_per_mwh']:>11.2f}" for a in all_res
         )
         print(f"  {lab:<34}{row}")
     print(
         f"\n  {'→ 彈性總價值(⑥−①)':<34}"
         + "".join(
-            f"€{all_res[a]['⑥ 只剩 CHP + 尖峰鍋爐(零彈性)']['heat_cost_per_mwh'] - all_res[a]['① 全部都有(基準)']['heat_cost_per_mwh']:>10.2f}"
+            f"€{all_res[a]['⑥ 只剩 CHP + 尖峰鍋爐(零彈性)']['heat_cost_per_mwh'] - all_res[a]['① 全部都有(基準)']['heat_cost_per_mwh']:>11.2f}"
             for a in all_res
         )
     )
     print(
         f"  {'→ P2H 價值(⑤−①)':<34}"
         + "".join(
-            f"€{all_res[a]['⑤ 拿掉全部 power-to-heat']['heat_cost_per_mwh'] - all_res[a]['① 全部都有(基準)']['heat_cost_per_mwh']:>10.2f}"
+            f"€{all_res[a]['⑤ 拿掉全部 power-to-heat']['heat_cost_per_mwh'] - all_res[a]['① 全部都有(基準)']['heat_cost_per_mwh']:>11.2f}"
             for a in all_res
         )
     )
     print(
-        "\n  ← 這一行就是碳假設污染的程度:生質機組(零碳)下 P2H 值多少,"
-        "\n     對比天然氣/燃煤機組。差距 = 原本 ef=0.20 一律套用造成的偏誤。"
+        "\n  ← 兩欄的差距 = 燃料/碳假設對彈性估值的影響程度。"
+        "\n  ⚠️ 生質(木片/顆粒)沒有燃料價來源,無法列入 —— 但它是 DK 熱電最大燃料。"
     )
 
-    res = all_res["gas"]  # 下面的細部行為沿用天然氣原型
+    res = all_res["gas_cc"]  # 下面的細部行為沿用天然氣原型
     print("\n【以下細部行為 = 天然氣原型】")
 
     # 錢實際上從哪些小時來?
