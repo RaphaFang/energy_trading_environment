@@ -9,18 +9,22 @@
 
 **最後更新 2026-08-07。**
 
-## ① 有 24 項變動未 commit,而且在 `main` 分支上
+## ① 工作在分支 `feat/heat-chp-track`,已推遠端,**PR 尚未開**
 
-最後一個 commit 是 `c1ce3aa`,之後的所有工作**都還沒進版控**。包含:
+`main` 仍停在 `c1ce3aa`。分支上有 4 個 commit(commit message 用英文):
 
-- `new_src/agents/` → `new_src/battery/` 的搬移(用 `git mv`,歷史有保留)
-- 新增整個 `new_src/heat/`(6 個模組)
-- 新增 `data/production_by_fuel.py`、`data/varmelast_heat.py`
-- `data/fuel_prices.py` 與 `data/load_duckdb.py` 的改動
-- 文件從 10 份併成 5 份(刪了 7 份、新增 3 份)
+```
+18e5123 docs: consolidate 10 markdown files into 5, add handover section
+dc77dd3 feat: heat track -- scheduling LP and data for CHP + district heating
+50b897f feat: store fuel prices raw, add coal (API2) and EUR/USD rate
+1ec6acd refactor: move agents/ to battery/, plus four foundation fixes for lambda
+```
 
-**建議第一件事:開分支再 commit**,不要直接推 main。使用者尚未指示要 commit,
-所以我沒有動 git。若使用者要求,先 `git checkout -b <名稱>`。
+內容涵蓋:`agents/` → `battery/` 的搬移、整個新的 `new_src/heat/`(6 模組)、
+`production_by_fuel.py` 與 `varmelast_heat.py`、燃料層改存 raw 並加煤價、
+文件 10 份併成 5 份。
+
+**開 PR 的連結**:https://github.com/RaphaFang/energy_trading_environment/pull/new/feat/heat-chp-track
 
 ## ② 三件「使用者要自己處理、不要幫他猜」的事
 
