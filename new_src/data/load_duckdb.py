@@ -76,10 +76,20 @@ def build_fuel() -> pd.DataFrame | None:
     backward on a 2-day-lagged cutoff → also fills weekends/holidays). Shared by zones.
     """
     fuel = Path("new_data/fuel")
+    # API2 煤的熱值:6000 kcal/kg NAR = 6.978 MWh_fuel/公噸(合約規格,不是估的)
+    COAL_MWH_PER_TONNE = 6.978
 
     def _series(name: str) -> pd.Series | None:
-        fs = glob.glob(str(fuel / f"{name}_*.parquet"))
-        return pd.read_parquet(fs[0]).iloc[:, 0] if fs else None
+        """優先讀 raw/(完整 OHLCV,取 Close);沒有才退回舊的單欄檔。
+
+        **一定要按欄名取 Close**:raw 檔的欄序是 Adj Close 在前,用 iloc[:,0] 會拿錯。
+        """
+        for d in (fuel / "raw", fuel):
+            fs = glob.glob(str(d / f"{name}_*.parquet"))
+            if fs:
+                df = pd.read_parquet(fs[0])
+                return df["Close"] if "Close" in df.columns else df.iloc[:, 0]
+        return None
 
     gas = _series("ttf_gas_eur_mwh")
     if gas is None:
@@ -92,6 +102,17 @@ def build_fuel() -> pd.DataFrame | None:
     daily = pd.DataFrame({"ttf_gas_eur_mwh": gas})
     if co2 is not None:
         daily["eua_co2_eur_t"] = co2
+    # 煤:原始檔是 USD/公噸,**換算在這裡做不在儲存層做**(換算規則改了不用重抓)。
+    #   EUR/MWh_fuel = (USD/t) ÷ (USD per EUR) ÷ (MWh/t)
+    coal_usd = _series("api2_coal_usd_t")
+    fx = _series("eurusd_rate")
+    if coal_usd is not None and fx is not None:
+        coal = coal_usd.reindex(coal_usd.index.union(fx.index)).ffill()
+        fx_al = fx.reindex(coal.index).ffill().bfill()
+        daily["api2_coal_eur_mwh"] = (coal / fx_al / COAL_MWH_PER_TONNE).reindex(
+            gas.index
+        )
+        daily["eurusd_rate"] = fx_al.reindex(gas.index)
     daily = daily.sort_index()
     daily.index = pd.to_datetime(daily.index)  # tz-naive dates
     daily = daily.reset_index(names="date")
