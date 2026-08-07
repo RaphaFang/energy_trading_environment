@@ -1,14 +1,14 @@
 """統一比較 harness:把 v1(perfect/naive)、統計模型(Ridge/Lasso/LightGBM/naive-24h)、
 v2 多 agent 競爭,鎖在**同一批 testing 窗**上跑,共同標尺 = 單顆電池 €/窗。
 
-綁 models/ 與 agents/ 的頂層入口,所以放 new_src/ 根目錄,不屬於任一邊。
+綁 models/ 與 battery/ 的入口。
 
 兩把不同的尺(別混):
   rMAE   = 預測準度 = MAE(模型) / MAE(naive-24h)   ← 分母是「照抄昨天」的誤差
   佔天花板 = 錢     = €(模型) / €(perfect)          ← 分母是完美預知的報酬
 錢的算法:每個預測模型「用預測價排程(perfect LP)、用真實價結算」= 照它的預測交易賺多少。
 
-用法:python new_src/compare.py [W|M]   (W=每週, M=每月, 預設 M)
+用法:python new_src/battery/compare.py [W|M]   (W=每週, M=每月, 預設 M)
 測試期 = SPLIT 之後(統計模型沒看過 → 不 leak),全部窗都跑,看分布不是看單一週。
 """
 
@@ -18,14 +18,16 @@ import sys
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, os.path.dirname(__file__))
-from agents.v1_single import naive, naive_hours, perfect, settle  # noqa: E402
-from agents.v2_multi import solve_day  # noqa: E402
+_HERE = os.path.dirname(__file__)
+sys.path.insert(0, _HERE)
+sys.path.insert(0, os.path.dirname(_HERE))  # new_src/ → models.forecast
+from v1_single import naive, naive_hours, perfect, settle  # noqa: E402
+from v2_multi import solve_day  # noqa: E402
 from models.forecast import fit_predict, load_training, rmae  # noqa: E402
 
 ZONE = "DK1"
 MIN_H = {"W": 160, "M": 600}  # 殘窗(頭尾不完整)跳掉
-# λ 來源:agents/fringe.py 的 structural_lambda()(多變數偏導數,DK1 中位 0.0042)。
+# λ 來源:battery/fringe.py 的 structural_lambda()(多變數偏導數,DK1 中位 0.0042)。
 # 舊值 0.037 是單變數 OLS 斜率,把丹麥/德國的天氣相關性算到本地頭上 → 高估約 8 倍。
 # 掃 10×/100× 看規模效應:λ×淨量 才是關鍵,λ=0.4×10MW ≡ λ=0.004×1GW。
 LAMS = (0.004, 0.04, 0.4)  # 結構估計、10×、100×(λ=0 恆等於天花板,不用跑)

@@ -27,14 +27,23 @@
     (v3/v4/hetero/scales/compare.py)不受影響。只有顯式傳 `impact=` 才會用真曲線。
     小車隊(≤100MW)兩者數字應該幾乎相同——那是這個開關的第一個 self-check。
 
+  - **支撐檢查**(2026-08-03 加)。`support()` / `out_of_support()` / `impact_report()`:
+    曲線只在觀察過的 x 範圍內有意義,超出去 np.interp 會夾端點 → 衝擊飽和成常數。
+    實測 DK1:10MW 超界 1%、500MW 7%(可用),1GW 21%、3GW 100%(純外推)。
+    **這是用 `nonlinear_impact` 前必看的可信度指標**,>10% 的體量別把數字當結果。
+  - **v3 自制接局部曲率**(2026-08-03 加)。`cournot_br` 的 `lam_wi` 現在吃向量,
+    `solve_day(lam=陣列)` 一路傳下去 → 出清價與自制強度同用一條曲線。
+  - **IV 識別**(2026-08-03 加)。`iv_lambda()` 用隔日風力預測當 x 的工具跑 2SLS,
+    檢查觀察性 λ 的內生性偏誤有多大。
+
 未做(知道但不在本檔範圍):
   - act−p₀ **不能**當市場力:p₀ 是 act 的擬合,兩者相減必然是零均值噪音。真的市場力
     要拿「全員出邊際成本」的競爭反事實比 act,那需要成本型 fringe(不在這裡)。
-  - v3 的 Cournot 自制(`cournot_br`)還沒跟著換:它內化自身衝擊用的 `lam_wi` 仍是
-    常數線性近似,不會隨 `impact=` 換成局部曲率。同時用 `br=cournot_br` 和非線性
-    `impact=` 時,大玩家的自制強度會算錯——這是下一步,不在這次的開關範圍內。
+  - **跨時 × 跨區結構**:λ(x) 是同小時的本地斜率。真實 DA 是 24 小時 × 全歐同時清算,
+    儲能本質是跨時搬電,而 DK 價格由聯絡線主導——大量放電的真實結果是「價格釘住鄰區、
+    受 NTC 限制」,不是沿本地供給曲線滑。這正是超出支撐範圍後外推特別不可信的原因。
 
-用法:python new_src/agents/fringe.py [DK1|DK2]   (預設 DK1)
+用法:python new_src/battery/fringe.py [DK1|DK2]   (預設 DK1)
 """
 
 import os
@@ -216,6 +225,105 @@ def nonlinear_impact(x, fringe: pd.DataFrame):
     return impact
 
 
+def support(fringe: pd.DataFrame) -> tuple[float, float]:
+    """fringe 曲線**有資料支撐**的 x 範圍(= fit_fringe 的格點兩端,已裁 0.5%/99.5%)。
+    超出這個範圍,`p0_at`/`lambda_at` 的 np.interp 會夾到端點 → 衝擊飽和,不再是估計值。"""
+    return float(fringe["x"].min()), float(fringe["x"].max())
+
+
+def out_of_support(x, net, fringe: pd.DataFrame) -> float:
+    """查詢點 x+net 落在支撐範圍外的比例(0–1)。**這是非線性 impact 的可信度指標。**
+
+    為什麼要這個:車隊越大,x+net 越容易跑出歷史觀察過的殘餘負載範圍,而 np.interp
+    在那裡只會回傳端點值 → 你以為在讀「陡段的價格衝擊」,其實在讀「曲線盡頭的常數」。
+    2026-08-03 實測 DK1:10MW→1%、500MW→7%(可用),1GW→21%、3GW→100%(全外推)。
+    **>10% 就別把該尺度的數字當結果報。** 用 `impact_report()` 一次看整條掃描。"""
+    lo, hi = support(fringe)
+    q = np.abs(np.asarray(net, float))
+    x = np.asarray(x, float)
+    return float(((x - q < lo) | (x + q > hi)).mean())
+
+
+def impact_report(x, scales, fringe: pd.DataFrame) -> pd.DataFrame:
+    """對一組體量,回傳各自的超界比例 + 可信度標記。跑任何體量掃描前先看這張表。"""
+    rows = []
+    for s in np.atleast_1d(scales):
+        f = out_of_support(x, s, fringe)
+        rows.append(
+            {
+                "scale_mw": float(s),
+                "out_of_support": f,
+                "verdict": "ok"
+                if f <= 0.10
+                else ("borderline" if f <= 0.25 else "EXTRAPOLATED"),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def iv_lambda(area: str = "DK1") -> dict:
+    """**λ 的工具變數(IV)估計** — 用隔日風力預測當 x 的工具,升級識別。
+
+    為什麼需要:`structural_lambda`/`scalar_lambda` 都是觀察性的,只控制了**可觀察**的
+    混淆。殘餘負載 x 與價格可能被共同的不可觀察因素同時推動(例如全歐熱浪同時抬高
+    負載與燃氣機組報價),那樣 OLS 的 λ 會混進反向/共同因果。
+
+    識別策略:x = load − wind − solar,其中**隔日風力預測是天氣**,對電廠報價外生。
+    風大 → x 低,這是純供給側位移,拿它當 x 的工具就能描出 fringe 的斜率而不沾到
+    需求側/報價側的內生性。這正是「用外生需求位移描供給曲線」的標準做法。
+
+    2SLS:
+      第一階段  x  ~ wind_da + 控制項        (工具強度看 first-stage F,>10 才算強)
+      第二階段  p  ~ x̂ + 控制項              → λ_IV
+    控制項:gas、co2(燃料 regime)、**德國殘餘**(排除限制的關鍵)、小時固定效果。
+
+    ⚠️ 排除限制不完美:丹麥風與德國風同源(同一片天氣),而德國價格經聯絡線直接影響
+    DK → 風可能不只透過本地 x 影響價。**所以一定要控 de_x**;控了之後殘餘的違反是
+    「德國風的其他管道」,無法完全排除。這是本估計最誠實的限制。
+
+    回傳 dict:lam_iv / lam_ols(同一批樣本、同控制項)/ first_stage_F / n。"""
+    con = duckdb.connect(DB, read_only=True)
+    d = con.execute(
+        "SELECT timestamp_utc, y_price_eur AS price, residual_mwh AS x, "
+        "onshore_wind_da_mwh AS won, offshore_wind_da_mwh AS woff, "
+        "ttf_gas_eur_mwh AS gas, eua_co2_eur_t AS co2, de_residual_mwh AS de_x "
+        f"FROM training WHERE area='{area}' "
+        "AND y_price_eur IS NOT NULL AND residual_mwh IS NOT NULL "
+        "AND onshore_wind_da_mwh IS NOT NULL AND offshore_wind_da_mwh IS NOT NULL "
+        "AND ttf_gas_eur_mwh IS NOT NULL AND de_residual_mwh IS NOT NULL "
+        "ORDER BY timestamp_utc"
+    ).fetchdf()
+    con.close()
+    d = d.dropna(subset=["price", "x", "won", "woff", "gas", "co2", "de_x"])
+    d["wind"] = d["won"] + d["woff"]  # 隔日風力預測總量 = 工具
+
+    hour = pd.get_dummies(d["timestamp_utc"].dt.hour, prefix="h", drop_first=True)
+    ctrl = np.column_stack(
+        [d["gas"], d["co2"], d["de_x"], hour.to_numpy(float), np.ones(len(d))]
+    )
+    y, x, z = d["price"].to_numpy(), d["x"].to_numpy(), d["wind"].to_numpy()
+
+    # 第一階段:x ~ wind + 控制 → x̂;工具強度用 partial F(加不加 wind 的 RSS 差)
+    Z = np.column_stack([z, ctrl])
+    b1 = np.linalg.lstsq(Z, x, rcond=None)[0]
+    xhat = Z @ b1
+    rss_full = float(((x - xhat) ** 2).sum())
+    rss_rest = float(((x - ctrl @ np.linalg.lstsq(ctrl, x, rcond=None)[0]) ** 2).sum())
+    dfree = len(d) - Z.shape[1]
+    F = (rss_rest - rss_full) / (rss_full / dfree)
+
+    # 第二階段:p ~ x̂ + 控制;OLS 對照用同一批樣本、同控制項
+    lam_iv = float(np.linalg.lstsq(np.column_stack([xhat, ctrl]), y, rcond=None)[0][0])
+    lam_ols = float(np.linalg.lstsq(np.column_stack([x, ctrl]), y, rcond=None)[0][0])
+    return {
+        "lam_iv": lam_iv,
+        "lam_ols": lam_ols,
+        "first_stage_F": float(F),
+        "first_stage_wind_coef": float(b1[0]),
+        "n": int(len(d)),
+    }
+
+
 def fringe_by_fuel(df: pd.DataFrame) -> pd.DataFrame:
     """λ 隨燃料 regime 怎麼變:gas 三分位各自估一條 fringe,回傳各自的斜率。
     這是純量 λ 最大的失真來源——merit order 隨燃料價旋轉,不只是平移。"""
@@ -351,6 +459,14 @@ def demo() -> None:
     print(
         f"  fringe ok: λ 全域非負、單調;局部 低{lo:.3f} < 純量{sca:.3f} < 高{hi:.3f}(純量抹平兩端)"
     )
+    # ④ 支撐檢查:小車隊應幾乎全在範圍內,大到跨越整條曲線就該全部超界
+    xs = df["x"].to_numpy()
+    small, huge = out_of_support(xs, 50, fr), out_of_support(xs, 6000, fr)
+    assert small < 0.10, f"50MW 應幾乎不超界,得 {small:.0%}"
+    assert huge > 0.90, f"6GW(寬過整條曲線)應幾乎全超界,得 {huge:.0%}"
+    rep = impact_report(xs, [50, 6000], fr)
+    assert list(rep["verdict"]) == ["ok", "EXTRAPOLATED"], "可信度標記錯"
+    print(f"  支撐 ok: 50MW 超界 {small:.0%}(ok)、6GW 超界 {huge:.0%}(EXTRAPOLATED)")
     _demo_confounding()
 
 
