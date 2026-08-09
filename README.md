@@ -7,62 +7,120 @@
 
 # 🔴 交接狀態(下一個 session 先讀這段)
 
-**最後更新 2026-08-07。**
+**最後更新 2026-08-09。**
 
-## ① 工作在分支 `feat/heat-chp-track`,已推遠端,**PR 尚未開**
+## ⓪ 研究範圍已縮到 **只做 DK2**(2026-08-08 使用者決定)
 
-`main` 仍停在 `c1ce3aa`。分支上有 4 個 commit(commit message 用英文):
+DK2(大哥本哈根)有 `varmelast.dk` 的**實際逐時熱需求真值**與**廠級所有權**;DK1 兩者都沒有。
+DK1 的程式碼與佔位值**先留著不刪**(哪天回頭做再撿)。細節與退休清單見 `STATUS.md` §0。
+
+**直接不必解的**:`ANNUAL_TWH_DK1=19.0`、`SYSTEM_SHARE=0.08`、「DK2 形狀能否移轉 DK1」。
+**新換來的問題**:DK2 是單一大型都會系統,「多業者相關熱需求」的核心假說要改用
+CTR / VEKS / 廠級業主(HOFOR、Vestforbrænding、ARC…)來切 agent,**切分方式未定案**。
+
+## ① 工作在分支 `feat/heat-chp-track`,**PR 尚未開**
+
+`main` 仍停在 `c1ce3aa`。分支上 5 個 commit(訊息用英文),最新一個:
 
 ```
+28be300 feat: real EUA carbon (ICAP, 100% coverage) + DEA catalogue params in chp.Plant
+370af88 docs: update handover section -- work is now committed and pushed
 18e5123 docs: consolidate 10 markdown files into 5, add handover section
 dc77dd3 feat: heat track -- scheduling LP and data for CHP + district heating
 50b897f feat: store fuel prices raw, add coal (API2) and EUR/USD rate
-1ec6acd refactor: move agents/ to battery/, plus four foundation fixes for lambda
 ```
 
-內容涵蓋:`agents/` → `battery/` 的搬移、整個新的 `new_src/heat/`(6 模組)、
-`production_by_fuel.py` 與 `varmelast_heat.py`、燃料層改存 raw 並加煤價、
-文件 10 份併成 5 份。
+⚠️ **`28be300` 尚未推遠端。**
+開 PR:https://github.com/RaphaFang/energy_trading_environment/pull/new/feat/heat-chp-track
 
-**開 PR 的連結**:https://github.com/RaphaFang/energy_trading_environment/pull/new/feat/heat-chp-track
+## ② 🔴 已知未修的 bug(下一個 session 第一件事)
 
-## ② 三件「使用者要自己處理、不要幫他猜」的事
+**`chp.Plant.eta_el` 用錯基準。** 2026-08-08 對 CSV 驗證:目錄的 **`Cb` 是用 name plate
+效率算的**(η_el/η_th 比值 5 張表 5 中,annual average 全部對不上)。但 `Plant` 取的是
+annual average → **同一組可行域裡混了兩種基準**。
 
-| 事項                                   | 為什麼不能猜                                                                                                                     |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| **生質燃料價**                         | 無國際期貨。要丹麥能源署 `Samfundsøkonomiske beregningsforudsætninger` 或 Energipriser 統計。目前程式用天然氣價當代理,**已標記** |
-| **elafgift(DH 電鍋爐/熱泵的電力稅費)** | 丹麥有專門規則且改過多次,是**一階遺漏**,直接改變 power-to-heat 的成本排序。使用者看得懂丹麥文,由他查證後給數字                   |
-| **DK1 年產熱量**                       | `demand.ANNUAL_TWH_DK1 = 19.0` 是佔位值。使用者提過能源署的數字是 21–23 TWh,待確認出處                                           |
+| 原型 | 現在(annual,錯) | 應為(name plate) |
+| ---- | ---------------- | ----------------- |
+| `wood_chips` | 0.409 | **0.43** |
+| `wood_pellets` | 0.425 | **0.447** |
+| `gas_cc` | 0.56 | **0.59** |
+| `coal` | 0.485 | 0.485(該表只有 name plate,誤打誤撞已正確) |
 
-## ③ 兩個懸而未決的方向決策(問使用者,別自己定)
+⚠️ 代價要一起處理:name plate 是設計點效率,而 LP **沒有建強迫停機或最小負載**
+→ 系統性樂觀。目錄有 `Availability` / `Forced outage` / `Minimum load` 三欄
+(木片抽汽:forced 0.03、min load 0.45),用 availability 當**容量折減**就補得回來,不必動整數。
 
-1. **研究區域要不要從 DK1 換成 DK2?**
-   DK2 有 varmelast 的**實際逐時熱需求**與**廠級所有權資料**;DK1 兩者都沒有(熱需求只能用代理)。
-   換過去能同時解掉最大的資料缺口與「agent 體量/集中度」的問題。
-2. **「市場力」框架對 DH 是否成立?**
-   丹麥區域供熱受成本回收原則(hvile-i-sig-selv)規範 → 非營利實體**沒有動機扣留產能抬價**。
-   但電廠業主(Ørsted/Vattenfall)與熱網公司(市政)可能是不同法人。
-   **這決定目標函數該是成本最小化還是利潤最大化**,必須在建多 agent 層之前定案。
-   ⚠️ 我沒查證過原始法規,`STATUS.md` §7 第 1 點已標明。
+## ③ 🔴 結構性阻塞:LP 表達不了背壓機組,而 DK2 有 27% 的熱靠它們
 
-## ④ 立即可做的下一步(依解鎖價值排序)
+目錄的抽汽表**完全沒有熱效率欄**(查 8 張全部 0 列)—— 兩個家族的燃料式**不同源**,
+不是同一個類別加一個開關:
 
-1. **把 `dea.plant_params()` 接成 `chp.Plant` 的來源** — 最大的解鎖。真值已能產出,
-   但 `Plant` 的預設**仍是佔位值**。我沒擅自改,因為那會讓所有既有數字變動。
-2. **重建 duckdb** 讓煤價進 `training` view(`python new_src/data/load_duckdb.py`)。
-   ⚠️ 會 `CREATE OR REPLACE` 覆寫 32MB 倉庫,跑之前確認所有來源檔都在。
-3. **用 varmelast `/api/v1/heatdata` 拿廠級所有權+容量** → 把「DK1 熱電 802 MW_e 車隊」
-   拆成真實的 agent 體量與家數。這是外部批評裡唯一還沒解的一點。
-4. **多 agent 層**(核心假說:相關的熱義務在稀缺時刻侵蝕整個 DH 車隊的彈性)。
-   目前**只有一個 agent**,互動層完全不存在。
+```
+背壓  F = P/η_el ;  Q = P·η_th/η_el        ← 熱電綁死在 P = Cb·Q 一條線
+抽汽  F = (P+Cv·Q)/η_el ; P ≥ Cb·Q ; P+Cv·Q ≤ P_max   ← 有可行域面積
+```
 
-## ⑤ 絕對不要做的事
+`Cv = 1.0` 是背壓表的 **N/A 哨兵值**,不是物理量(`dea.is_back_pressure()` 已擋,
+但目前只做到「擋下」,沒做到「支援」)。
+
+**規模**:目錄 33 張 CHP 表,**24 張背壓、只有 9 張抽汽**。
+**DK2 實測**(varmelast 2021–2026 供熱來源):熱電 64.4% / **垃圾焚化 27.3%(目錄裡全是背壓)** / 尖峰氣 4.5%。
+→ **四分之一的 DK2 熱量現在結構上表達不了。** 這不是以後再說,是現在就擋路。
+
+⚠️ 還有第三個溫度基準陷阱:Medium 機組是 `Cb (40°C/80°C)`,大型是 `(50°C/100°C)`。
+CTR 是高溫傳輸網 → DK2 只能用 50/100 那批,混進 Medium 等於偷改熱網溫度。
+
+## ④ 已同意的 `plant.py` 重構方向(還沒動手)
+
+```
+Fuel                  燃料價 + ef + 熱值
+Unit(ABC)             共同:P_max, min_load, vom, availability
+ ├ BackPressure       η_el, η_th
+ └ Extraction         η_el, Cb, Cv, P_max
+P2H                   Q_t = k_t·P_buy_t(**一個類別吃 k 向量就好**)
+Store                 141b Large TTES
+每個 Param 帶 source=("TC", ws, Technology, year, est) 五元組
+```
+
+- **`source` 五元組是最高價值的部分** — 它把 `STATUS.md` §4 那張手維護的來源表
+  變成機器可查、可重跑驗證的東西,成本只是一個 dataclass 欄位。
+- **刻意不開 `P2H(ABC)` + 兩個子類**:在 LP 裡電鍋爐與熱泵是同一條式子,
+  只差 k 是常數 0.99 還是逐時 COP(T)。零行為差異不值得開介面。
+- `min_load` / `forced_outage` 放進去當**資料**可以,但要標明 **LP 目前沒有用它們**。
+
+## ⑤ 三件「使用者要自己處理、不要幫他猜」的事
+
+| 事項 | 為什麼不能猜 |
+| ---- | ------------ |
+| **elafgift(DH 電鍋爐/熱泵的電力稅費與網費)** | 模型現在假設買電**零稅費** → **系統性高估 power-to-heat**,而 P2H 正是 C3 章主題。丹麥規則改過多次,使用者看得懂丹麥文 |
+| **生質燃料價** | 無國際期貨。要能源署 `Samfundsøkonomiske beregningsforudsætninger` 或 Energipriser。**現在不再用天然氣價代打**(會跑出負成本),而是直接不跑生質原型 |
+| **DK2 熱網供水/回水溫度** | `cop_from_temp` 裡寫死 70°C 是我編的,直接決定熱泵 COP。CTR/VEKS 年報應該有 |
+
+## ⑥ 待定案的方向決策(問使用者,別自己定)
+
+**「市場力」框架對 DH 是否成立?** 丹麥區域供熱受成本回收原則(hvile-i-sig-selv)規範
+→ 非營利實體**沒有動機扣留產能抬價**。但電廠業主(Ørsted/Vattenfall)與熱網公司(市政)
+可能是不同法人。**這決定目標函數該是成本最小化還是利潤最大化**,必須在建多 agent 層之前定案。
+⚠️ 未查證原始法規,`STATUS.md` §7 第 1 點已標明。
+
+## ⑦ 立即可做的下一步(依順序)
+
+1. **修 `eta_el` 基準**(見 ②)—— 四個數字 + 一個基準一致性 self-check。既有 bug,獨立於重構。
+2. **加背壓類別**(見 ③)—— 要動 `solve()` 的約束矩陣。DK2 的 27% 卡在這。
+3. **`source` 五元組 + `Fuel` 拆出來**(見 ④)。
+4. 抓 varmelast `/api/v1/heatdata` 廠級所有權+容量 → 解掉機組尺寸與 agent 切分。
+5. 用 varmelast 的分類產熱直接驗 `chp.py` 的排程行為(不只驗需求)。
+
+## ⑧ 絕對不要做的事
 
 - **不要擅自刪 `new_data/` 裡的任何東西。** 使用者花很多心思整理,而且它是 gitignored、
   刪了無法從 repo 還原。`new_data/fuel/` 那兩個舊單欄檔雖被 `raw/` 取代,
   但 `load_duckdb._series()` 仍會 fallback 讀 → **等 duckdb 重建並驗證後再議**。
-- **不要把 `chp.Plant` 跑出來的金額當結論引用。** 預設值仍是佔位值,
-  且 `p_max=400 MW_e` 相對它服務的熱網過大(機組像純發電廠在跑)。
+- **不要把 `chp.Plant` 跑出來的金額當結論引用。** 技術參數雖已是目錄真值,但
+  ①`eta_el` 基準還沒修 ②機組容量與熱網規模沒對齊(目錄是單一機組典型值,
+  試算比值 1.7×–2.9×,多出來的容量當純凝汽電廠賣電、利潤被記進「供熱成本」
+  → 煤原型跑出 −€16/MWh_th)③`chp._real_demo` 的熱需求仍建立在 DK1 佔位值
+  `19.0 × 0.08` 上。**方向可引用,水準不可引用。**
 - **不要在儲存層做清理或單位換算。** 見下方工作慣例。
 
 ---
