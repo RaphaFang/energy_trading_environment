@@ -4,19 +4,23 @@
 熱側的 CHP 模型直接用它們算邊際成本。
 
 來源:yfinance(Yahoo Finance)。ticker 與**原始單位**:
-  TTF=F     Dutch TTF Natural Gas    EUR/MWh    2019+ 完整
-  MTF=F     Coal API2 CIF ARA        **USD/公噸**  2019+ 完整
-  CO2.L     SparkChange Physical EUA ETC  EUR/tCO2   僅 2021-10 起
-  EURUSD=X  歐元/美元匯率              —          煤價換算成 EUR 要用
+  TTF=F     Dutch TTF Natural Gas    EUR/MWh      2019+ 完整
+  MTF=F     Coal API2 CIF ARA        **USD/公噸**   2019+ 完整
+  EURUSD=X  歐元/美元匯率              —            煤價換算成 EUR 要用
+
+碳價(EUA)**不走 yfinance**,來源是 `new_data/carbon_price_ICAP/` 的 ICAP Allowance
+Price Explorer 匯出(`Primary Market` 欄,2019-09 起近日頻,涵蓋 100%)。
+先前用的 Yahoo `CO2.L` 只回到 2021-10(涵蓋 52%),重疊期與 ICAP corr 0.986、
+中位差 €1.41(拍賣 vs 期貨基差)—— 已淘汰。要拿回來當交叉檢核就把 CO2.L 加回 TICKERS。
 
 為什麼煤用 ARA 不用「丹麥煤價」:煤是全球海運商品,北歐(含丹麥)的參考價**就是**
 API2 CIF ARA(鹿特丹)。沒有丹麥煤價這種東西。同理碳價是 EU ETS 全歐單一價。
 只有生質是區域性定價,需要丹麥能源署的資料(**目前仍缺**)。
 
-**儲存原則:raw。** 存 Yahoo 回傳的完整 OHLCV,不挑欄位、不換單位、不換幣別。
+**儲存原則:raw。** 存來源回傳的完整內容,不挑欄位、不換單位、不換幣別。
   - 煤的 USD→EUR、公噸→MWh_fuel 的換算是**分析時**才做的事(見 load_duckdb.build_fuel),
     不在儲存時做。這樣換算規則改了不用重抓。
-  - 舊的「只存收盤價」單欄檔案留在 new_data/fuel/ 沒動;新的 raw 檔在 new_data/fuel/raw/。
+  - `new_data/fuel/` **一個商品一個檔,沒有子資料夾**。
 
 leak 安全:期貨結算價當天就公開,而合併成逐時是在 load_duckdb 用「交易日 −2 天」
 的收盤價往回配(隔日競價中午前截標,那時只知道 ≤D-2)。leak 防護在合併層,不在這裡。
@@ -29,28 +33,26 @@ from pathlib import Path
 
 import pandas as pd
 
-FUEL = Path("new_data/fuel")
-RAW = FUEL / "raw"  # 完整 OHLCV,原始單位
-MANUAL = FUEL / "manual"  # 使用者手動補的 CSV(碳價 2019→2021-10)
+FUEL = Path("new_data/fuel")  # 一個商品一個 parquet,無子資料夾
+ICAP = Path("new_data/carbon_price_ICAP")  # 使用者下載的 ICAP 碳價匯出
 START, END = "2019-01-01", "2025-10-01"
 
 # Yahoo ticker -> (檔名, 原始單位) — 檔名帶幣別,避免日後誤用
 TICKERS = {
     "TTF=F": ("ttf_gas_eur_mwh", "EUR/MWh"),
     "MTF=F": ("api2_coal_usd_t", "USD/tonne"),
-    "CO2.L": ("eua_co2_eur_t", "EUR/tCO2"),
     "EURUSD=X": ("eurusd_rate", "USD per EUR"),
 }
 
 
 def _have(name: str) -> bool:
-    return bool(glob.glob(str(RAW / f"{name}_*.parquet")))
+    return bool(glob.glob(str(FUEL / f"{name}_*.parquet")))
 
 
 def pull_yahoo() -> None:
     import yfinance as yf  # ponytail: heavy import, only when actually pulling
 
-    RAW.mkdir(parents=True, exist_ok=True)
+    FUEL.mkdir(parents=True, exist_ok=True)
     for tk, (name, unit) in TICKERS.items():
         if _have(name):
             print(f"  · {name}: 已存在,跳過")
@@ -62,7 +64,7 @@ def pull_yahoo() -> None:
         if isinstance(d.columns, pd.MultiIndex):  # 單一 ticker 也會回 MultiIndex
             d.columns = d.columns.get_level_values(0)
         d.index.name = "date"
-        p = RAW / f"{name}_{START}_{END}.parquet"
+        p = FUEL / f"{name}_{START}_{END}.parquet"
         d.to_parquet(p, engine="pyarrow", compression="snappy")
         print(
             f"✓ {name:18} [{unit:11}] {len(d):>5} 天  "
@@ -70,19 +72,19 @@ def pull_yahoo() -> None:
         )
 
 
-def load_manual() -> None:
-    """吃 new_data/fuel/manual/ 裡任何 Date+價格欄的 CSV → 碳價全期序列。
+def load_carbon() -> None:
+    """吃 new_data/carbon_price_ICAP/ 裡任何 Date+價格欄的 CSV → 碳價序列。
 
-    現行來源:**ICAP Allowance Price Explorer** 匯出(EU ETS,2019-09 起近日頻)。
+    來源:**ICAP Allowance Price Explorer** 匯出(EU ETS,2019-09 起近日頻)。
     用它的 `Primary Market`(拍賣結算價)——`Secondary Market` 只有 322 天太稀疏。
     與 Yahoo `CO2.L` 在重疊期 corr 0.986、中位差 €1.41(拍賣 vs 期貨基差)。
     其他可用來源:Sandbag carbon price viewer、EEA datahub、investing.com。
 
     ⚠️ ICAP 匯出的第一行是標題列,真正的欄名在第二行 → 認不到 date 欄就跳一行重讀。
     """
-    csvs = glob.glob(str(MANUAL / "*.csv"))
+    csvs = glob.glob(str(ICAP / "*.csv"))
     if not csvs:
-        print(f"  (manual/ 沒有 CSV → 碳價退回 Yahoo CO2.L,只有 2021-10 起約 52%)")
+        print(f"  ⚠️ {ICAP}/ 沒有 CSV → **完全沒有碳價**。到 ICAP Allowance Price Explorer 下載 EU ETS")
         return
     for f in csvs:
         raw = pd.read_csv(f)
@@ -119,20 +121,19 @@ def load_manual() -> None:
             .sort_index()
         )
         s.index.name = "date"
-        p = FUEL / f"eua_co2_eur_t_manual_{START}_{END}.parquet"
+        p = FUEL / f"eua_co2_eur_t_{START}_{END}.parquet"
         s.rename("Close").to_frame().to_parquet(
             p, engine="pyarrow", compression="snappy"
         )
         print(
-            f"✓ manual 碳價 [{Path(f).name} → 欄位 '{price_col}']: "
+            f"✓ 碳價 [{Path(f).name} → 欄位 '{price_col}']: "
             f"{s.index.min().date()} → {s.index.max().date()} ({len(s)} 天) → {p}"
         )
 
 
 def main() -> None:
-    MANUAL.mkdir(parents=True, exist_ok=True)
     pull_yahoo()
-    load_manual()
+    load_carbon()
     print(
         "\n⚠️ 仍缺:**生質燃料價**(木片/顆粒)。無國際期貨,需丹麥能源署\n"
         "   『Samfundsøkonomiske beregningsforudsætninger』或 Energipriser 統計。"

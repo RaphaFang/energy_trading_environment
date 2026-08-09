@@ -381,7 +381,7 @@ P_t + Cv·Q_chp,t ≤ p_max
 | ---------------------------- | ------------------------------------------ | ---------------------------- | --------------------------------------- | --------------------------------------------------------------------------------- |
 | `data/elspot_price.py`       | Energinet `Elspotprices`                   | 2019-01-01 → 2026-07-08,逐時 | 電價,LP 的價格訊號                      | ✅ 用(經 duckdb `y_price_eur`)                                                    |
 | `data/weather_forecast.py`   | Open-Meteo `historical-forecast-api`       | 2019 → 2026,逐時             | 氣溫,熱需求的驅動變數                   | ✅ 用(經 duckdb `temperature_2m`)                                                 |
-| `data/fuel_prices.py`        | yfinance:TTF=F、CO2.L                      | 2019-01-01 → 2025-10-01,日   | 天然氣價(燃料成本)                      | ✅ 用天然氣;**碳價抓了但沒接進 LP**                                               |
+| `data/fuel_prices.py`        | yfinance:TTF=F、MTF=F、EURUSD=X;ICAP:EUA | 2019-01-01 → 2025-10-01,日   | 燃料與碳的邊際成本                       | ✅ 氣/煤/碳都已接進 LP(碳價 100% 覆蓋)                                          |
 | `data/varmelast_heat.py`     | varmelast.dk `/api/v1/heatdata/historical` | 2021-03 → 2026-07,逐時       | DK2 實際熱需求,用來校準度日代理         | ✅ 用(`heat/calibrate.py`)                                                        |
 | `data/production_by_fuel.py` | Energinet `ElectricityBalanceNonv`         | 2019-01-01 → 2026-07-08,逐時 | 分燃料出力,原本想當熱需求代理的驗證標的 | 🟡 **已知該用途無效**(見下),目前只在 `demand.validate_against_chp()` 當敘述性對照 |
 | `data/load_duckdb.py`        | 合併上述來源                               | —                            | 建 `energy.duckdb` 的 `training` view   | ✅ 用(熱側只讀 3 欄)                                                              |

@@ -145,7 +145,7 @@ Store                 141b Large TTES
 | `ElectricityBalanceNonv` 15 分鐘制 | 2025-10 後轉 15 分鐘一筆。直接加總 MW 會把那段算 4 倍權重 → **先 `resample('1h').mean()`**                                                     |
 | DEA 目錄 `Cv = 1.0`                | 是**背壓式的哨兵值不是真值**(註解寫明 Cv does not exist)。背壓式是 `P=Cb·Q` 一條線、無彈性;抽汽式才有可行域面積。`dea.is_back_pressure()` 會擋 |
 | DEA 年份格點                       | 隨技術與 est 而異(ctrl 常有 2015/2020/2030/2050;lower/upper 常只有 2020/2050)→ 要取最接近年份,不能硬性相等                                     |
-| 煤價是 USD                         | `MTF=F` 是 **USD/公噸**,不是 EUR。碳價 `CO2.L` 才是 EUR                                                                                        |
+| 煤價是 USD                         | `MTF=F` 是 **USD/公噸**,不是 EUR;換算在 `load_duckdb.build_fuel()` 做。碳價(ICAP)本來就是 EUR                                                |
 | `el_net` 為負是正常的              | 熱在模型裡是**義務不是商品**(無熱收入)→ 燒燃料是為了供熱,電只是副產品。看 `heat_cost_per_mwh` 才有意義                                         |
 | 驗證要挑有識別力的標的             | 曾用 CHP 發電量驗證熱需求代理 —— 發電量由熱約束與電價共同決定,電價影響大得多,**驗不動**。改用 varmelast 真值才驗得出來                         |
 
@@ -204,7 +204,7 @@ python new_src/heat/fuelmix.py      # DK1 燃料組成
 python new_src/heat/flexibility.py 2024   # 彈性價值拆解
 
 # 資料
-python new_src/data/fuel_prices.py        # 氣/煤/碳/匯率(raw,skip-if-exists)
+python new_src/data/fuel_prices.py        # 氣/煤/匯率(yfinance)+ 碳價(讀 carbon_price_ICAP/)
 python new_src/data/production_by_fuel.py # 分燃料逐時出力
 python new_src/data/varmelast_heat.py     # DK2 實際逐時熱需求
 python new_src/data/load_duckdb.py        # 合併成 energy.duckdb(最後跑,會覆寫)

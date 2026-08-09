@@ -34,7 +34,7 @@
 | 4   | Energinet `ProductionConsumptionSettlement` | `residual_demand.py`    | `new_data/residual_*.parquet` | 負載/residual(**只當 lag**) | 實測 → 同時刻會 leak |
 | 5   | 計算(無 API)                                | `calendar_features.py`  | `new_data/calendar/`          | Tier-1 特徵 + **spine**     | 決定性,零 leak       |
 | 6   | ENTSO-E Transparency                        | `entsoe_features.py`    | `new_data/entsoe/`            | **Tier-2 鄰居+DK負載**      | 全 day-ahead         |
-| 7   | yfinance(TTF/API2/EUA/FX)                   | `fuel_prices.py`        | `new_data/fuel/raw/`          | **Tier-3 燃料與碳**         | 用 ≤D-2 收盤         |
+| 7   | yfinance(TTF/API2/FX)+ ICAP(EUA)          | `fuel_prices.py`        | `new_data/fuel/`              | **Tier-3 燃料與碳**         | 用 ≤D-2 收盤         |
 | 8   | Energinet `ElectricityBalanceNonv`          | `production_by_fuel.py` | `new_data/production/`        | 分燃料逐時出力(熱側驗證)    | 實測,僅供驗證        |
 | 9   | varmelast.dk `/api/v1/heatdata`             | `varmelast_heat.py`     | `new_data/heat/`              | **DK2 實際逐時熱需求**      | 實測,僅供校準        |
 | 10  | 丹麥能源署 Technology Catalogue             | (手動下載)              | `new_data/DEA_data/`          | **機組技術參數**            | 非時序               |
@@ -147,15 +147,19 @@
 
 ### 儲存原則:raw
 
-`new_data/fuel/raw/` 存 Yahoo 回傳的**完整 OHLCV,原始單位、原始幣別,不挑欄位不換算**。
-換算(USD→EUR、公噸→MWh)在 `load_duckdb.build_fuel()` 做 → 換算規則改了不用重抓。
+`new_data/fuel/` **一個商品一個 parquet,沒有子資料夾**,存來源回傳的原始單位、原始幣別,
+不挑欄位不換算。換算(USD→EUR、公噸→MWh)在 `load_duckdb.build_fuel()` 做
+→ 換算規則改了不用重抓。
 
-| ticker     | 檔名              | **原始單位** | 涵蓋                          |
-| ---------- | ----------------- | ------------ | ----------------------------- |
-| `TTF=F`    | `ttf_gas_eur_mwh` | EUR/MWh      | 1,698 天,2019-01 → 2025-09    |
-| `MTF=F`    | `api2_coal_usd_t` | **USD/公噸** | 1,695 天,同上                 |
-| `CO2.L`    | `eua_co2_eur_t`   | EUR/tCO2     | 997 天,**2021-10-18 起(52%)** |
-| `EURUSD=X` | `eurusd_rate`     | USD per EUR  | 1,757 天                      |
+| 來源                    | 檔名              | **原始單位** | 涵蓋                       |
+| ----------------------- | ----------------- | ------------ | -------------------------- |
+| yfinance `TTF=F`        | `ttf_gas_eur_mwh` | EUR/MWh      | 1,698 天,2019-01 → 2025-09 |
+| yfinance `MTF=F`        | `api2_coal_usd_t` | **USD/公噸** | 1,695 天,同上              |
+| **ICAP** Allowance Price Explorer | `eua_co2_eur_t` | EUR/tCO2 | **1,483 天,2019-09 起(100%)** |
+| yfinance `EURUSD=X`     | `eurusd_rate`     | USD per EUR  | 1,757 天                   |
+
+碳價的原始 CSV 放在 `new_data/carbon_price_ICAP/`(使用者從 ICAP 網站下載),
+`fuel_prices.load_carbon()` 讀它、轉成上表那個 parquet。
 
 ### 為什麼煤是美元、碳是歐元
 
@@ -174,11 +178,21 @@ EUR/MWh_fuel = (USD/公噸) ÷ (當日 USD per EUR) ÷ 6.978 MWh/公噸
 匯率逐日對齊,假日用**前一個有報價的日子**往前填(不會用未來值)。
 ⚠️ 真實電廠通常做匯率避險,即期換算是**邊際成本建模的標準做法**,不等於某業者實付價格。
 
-### 碳價的缺口與補法
+### 碳價:2026-08-07 從 Yahoo 換成 ICAP(涵蓋 52% → 100%)
 
-`CO2.L` 只回到 2021-10-18(該 ETC 上市日)→ 涵蓋 52%。
-`fuel_prices.load_manual()` 會自動吃 `new_data/fuel/manual/` 裡任何 Date+Price 的 CSV。
-候選來源:Sandbag carbon price viewer(回溯到 2008)、EEA datahub(官方)、investing.com、Barchart。
+舊來源 Yahoo `CO2.L` 是一檔 ETC,只回到 2021-10-18(上市日)→ 涵蓋 52%。
+現行來源 **ICAP Allowance Price Explorer** 的 `Primary Market` 欄(拍賣結算價),
+2019-09 起近日頻。同一份匯出裡的 `Secondary Market` 只有 322 天,太稀疏,不要用。
+
+**整段取代,不在 2021-10 接縫** —— 那正好是碳價起飛的位置,接兩個不同序列會在最敏感的
+地方留一個水準跳動。重疊期 corr **0.986**、中位差 €1.41(拍賣 vs 期貨基差)。
+
+⚠️ ICAP 匯出的**第一行是標題列,欄名在第二行**(`load_carbon()` 認不到 date 欄就 `skiprows=1`)。
+⚠️ 候選價格欄要取**非空值最多**的,否則會選到恆為 1 的 `Exchange rate EUR/EUR` 欄。
+⚠️ 碳價的交易日曆與 TTF 不同 → `build_fuel()` **先對齊 gas 格線 ffill 再 merge_asof**
+(merge_asof 只挑最近一列,不會補洞)。
+
+其他候選來源:Sandbag carbon price viewer(回溯到 2008)、EEA datahub(官方)、investing.com。
 
 ### TTF 歷史(驗證正確)
 
