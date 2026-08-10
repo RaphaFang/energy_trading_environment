@@ -10,9 +10,42 @@
      LP 結構** → 可以直接驗證排程模型,不只驗證需求代理。
 
 涵蓋:2021 起(2019/2020 無資料),逐時,單位 MJ/s = MW_th。
-主要序列:BE-EO-CTR-EFF(CTR 熱需求)、DAP-VEKS-FORBRUG-EFF(VEKS 熱需求)、
-TOTAL(總產熱)、BE-VL-AFFALD-EF(廢棄物)、BE-VL-KRAFTV-EF(熱電)、
-BE-VL-BIO-EF / BE-VL-SPIDS-GAS-EF(尖峰生質/氣)、LOCAL(本地產熱)。
+
+🔴 **這個端點同時回傳兩類欄位,用途完全不同,混用會造成循環論證**(2026-08-09 查證,
+官方欄位定義快照存在 `new_data/heat/varmelast_dictionary.json`):
+
+  **① 消費(varmebehov 的實現值)—— 這才可以當 LP 的熱需求輸入**
+      BE-EO-CTR-EFF          CTR 傳輸網熱消費(均 709 MW_th)
+      DAP-VEKS-FORBRUG-EFF   VEKS 傳輸網熱消費(均 287 MW_th;key 裡 FORBRUG = 消費)
+
+  **② 生產(varmeplan 的實現值)—— 只能當驗證對照,絕不可當輸入**
+      TOTAL                  官方 title「Produktion i alt」= 總生產,**不是需求**
+      BE-VL-KRAFTV-EF 熱電 64.6% / BE-VL-AFFALD-EF 焚化 27.7% / BE-VL-SPIDS-GAS-EF 尖峰氣 4.0%
+      BE-VL-IO-EF 工業餘熱 / BE-VL-EVO-EF 電鍋爐 / BE-VL-VP-EF 熱泵 / BE-VL-OD-EF 資料中心餘熱
+      BE-VL-BIO-EF、BE-VL-SPIDS-OLIE-EF 尖峰生質/油 / BE-VL-BG-EF 沼氣 / BE-VL-SOL-EF 太陽能熱
+      這些序列**已經含蓄熱槽調度與經濟最佳化的結果** → 拿來當熱需求就是拿模型的輸出當輸入。
+
+  🔴 **BE-VL-TOTAL-FAK 不是熱量欄** —— 官方 title「CO2 - Udledning」,單位 **Kg/GJ**
+     (排放強度)。加進 MW_th 的分母會算錯佔比(先前 STATUS.md 的 64.4/27.3 就是這樣來的)。
+  ⚠️ LOCAL(Lokal produktion)全期恆為 0,沒有資料。官網說明有一部分熱是本地直接送進
+     配網、不經傳輸網 → **CTR+VEKS 是「傳輸層取用量」,不是終端消費總量**。對本模型這正好
+     是對的邊界(LP 調度的就是接在傳輸網上的機組),但論文裡要標明是傳輸層口徑。
+
+**生產 ≠ 消費,差額是蓄熱槽 + 管網損失**:dictionary 明寫 TOTAL 是
+`Produktion i alt *eksklusive op- og afladning på varmelagre`(**不含**蓄熱充放)。
+實測 2023–25:gap = 生產 − 消費,均 +21 MW、std 99、**41% 小時為負**、日內有清楚充放循環;
+月均 gap 約佔消費 **1.0–3.7%**(≈2%)= 傳輸網損失。三座蓄熱槽(Amager 1,000 MWh/±300 MJ/s、
+Avedøre 2,200 MWh/±330 MJ/s、Høje Taastrup 池儲 3,300 MWh/±30 MJ/s)在 `/api/v1/heatdata`
+的 objects 裡有列,但**沒有數值序列** → 要重建蓄熱只能用 gap 扣掉損失近似。
+
+**這是事後實測,不是事前計畫**:dictionary 寫「Data vises med 90 minutters forsinkelse」
+(延遲 90 分鐘、每 5 分鐘更新 = 遙測簽名);CO2 說明寫熱電/焚化排放是 `målte værdier`(量測值)。
+純需求**預測**在另一個 host:`app-lasso-api-prod-001.azurewebsites.net/api/prognosis/overall`
+(「14-døgns varmeprognose」,欄位 totalDemand + forecastWaste),但**只往未來 14 天、只有日均、
+無歷史** → 歷史逐時需求只能用 CTR+VEKS。
+
+其他端點:`/api/v1/heatdata`(廠級即時值 + 業主與容量)、`/api/v1/heatdata/dictionary`
+(唯一的官方欄位定義,已快照)、`/api/v1/heatdata/revisionplan`(機組檢修計畫)。
 
 ⚠️ 這是**大哥本哈根(DK2)**,不是 DK1。當校準與驗證用,不是 DK1 的直接輸入。
 ⚠️ API 是小型公用事業網站,抓取請保持禮貌間隔(本檔預設每季一次請求 + 2 秒延遲)。

@@ -34,7 +34,7 @@
 | 4   | Energinet `ProductionConsumptionSettlement` | `residual_demand.py`    | `new_data/residual_*.parquet` | 負載/residual(**只當 lag**) | 實測 → 同時刻會 leak |
 | 5   | 計算(無 API)                                | `calendar_features.py`  | `new_data/calendar/`          | Tier-1 特徵 + **spine**     | 決定性,零 leak       |
 | 6   | ENTSO-E Transparency                        | `entsoe_features.py`    | `new_data/entsoe/`            | **Tier-2 鄰居+DK負載**      | 全 day-ahead         |
-| 7   | yfinance(TTF/API2/FX)+ ICAP(EUA)          | `fuel_prices.py`        | `new_data/fuel/`              | **Tier-3 燃料與碳**         | 用 ≤D-2 收盤         |
+| 7   | yfinance(TTF/API2/FX)+ ICAP(EUA)            | `fuel_prices.py`        | `new_data/fuel/`              | **Tier-3 燃料與碳**         | 用 ≤D-2 收盤         |
 | 8   | Energinet `ElectricityBalanceNonv`          | `production_by_fuel.py` | `new_data/production/`        | 分燃料逐時出力(熱側驗證)    | 實測,僅供驗證        |
 | 9   | varmelast.dk `/api/v1/heatdata`             | `varmelast_heat.py`     | `new_data/heat/`              | **DK2 實際逐時熱需求**      | 實測,僅供校準        |
 | 10  | 丹麥能源署 Technology Catalogue             | (手動下載)              | `new_data/DEA_data/`          | **機組技術參數**            | 非時序               |
@@ -151,12 +151,12 @@
 不挑欄位不換算。換算(USD→EUR、公噸→MWh)在 `load_duckdb.build_fuel()` 做
 → 換算規則改了不用重抓。
 
-| 來源                    | 檔名              | **原始單位** | 涵蓋                       |
-| ----------------------- | ----------------- | ------------ | -------------------------- |
-| yfinance `TTF=F`        | `ttf_gas_eur_mwh` | EUR/MWh      | 1,698 天,2019-01 → 2025-09 |
-| yfinance `MTF=F`        | `api2_coal_usd_t` | **USD/公噸** | 1,695 天,同上              |
-| **ICAP** Allowance Price Explorer | `eua_co2_eur_t` | EUR/tCO2 | **1,483 天,2019-09 起(100%)** |
-| yfinance `EURUSD=X`     | `eurusd_rate`     | USD per EUR  | 1,757 天                   |
+| 來源                              | 檔名              | **原始單位** | 涵蓋                          |
+| --------------------------------- | ----------------- | ------------ | ----------------------------- |
+| yfinance `TTF=F`                  | `ttf_gas_eur_mwh` | EUR/MWh      | 1,698 天,2019-01 → 2025-09    |
+| yfinance `MTF=F`                  | `api2_coal_usd_t` | **USD/公噸** | 1,695 天,同上                 |
+| **ICAP** Allowance Price Explorer | `eua_co2_eur_t`   | EUR/tCO2     | **1,483 天,2019-09 起(100%)** |
+| yfinance `EURUSD=X`               | `eurusd_rate`     | USD per EUR  | 1,757 天                      |
 
 碳價的原始 CSV 放在 `new_data/carbon_price_ICAP/`(使用者從 ICAP 網站下載),
 `fuel_prices.load_carbon()` 讀它、轉成上表那個 parquet。
@@ -220,10 +220,39 @@ DK1 2025 熱電發電量組成:生質 32.8% / 煤 27.8% / 氣 23.7% / 廢棄物 
 端點 `https://www.varmelast.dk/api/v1/heatdata/historical?from=&to=`(公開,免 key)。
 單位 MJ/s = MW_th,**2021 起**(2019/2020 無)。37,969 列。
 
-主要序列:`BE-EO-CTR-EFF`(CTR 熱需求)、`DAP-VEKS-FORBRUG-EFF`(VEKS 熱需求)、`TOTAL`、
-`BE-VL-AFFALD-EF`(廢棄物)、`BE-VL-KRAFTV-EF`(熱電)、`BE-VL-BIO-EF`/`SPIDS-GAS-EF`(尖峰)、`LOCAL`。
+🔴 **同一個端點同時回傳消費與生產兩類欄位,混用 = 循環論證**(2026-08-09 查證):
 
-另有 `/api/v1/heatdata` 給**廠級物件含所有權與容量**(例:Amagerværket 屬 HOFOR、810 MJ/s)。
+| 欄位                                                                                                                                              | 官方 title           | 類別             | 能不能當 LP 輸入                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- | ---------------- | ----------------------------------- |
+| `BE-EO-CTR-EFF`                                                                                                                                   | CTR                  | **消費**         | ✅ 可以(均 709 MW_th)               |
+| `DAP-VEKS-FORBRUG-EFF`                                                                                                                            | VEKS                 | **消費**         | ✅ 可以(均 287;key 裡 FORBRUG=消費) |
+| `TOTAL`                                                                                                                                           | **Produktion i alt** | 生產             | ❌ 含蓄熱與調度結果                 |
+| `BE-VL-KRAFTV-EF` 64.6% / `AFFALD` 27.7% / `SPIDS-GAS` 4.0% / `IO` 1.0% / `EVO`(電鍋爐)0.8% / `VP`(熱泵)0.6% / `BIO`·`SPIDS-OLIE`·`BG`·`OD`·`SOL` | 分來源               | 生產             | ❌ 僅供驗證排程行為                 |
+| `BE-VL-TOTAL-FAK`                                                                                                                                 | **CO2 - Udledning**  | **排放,`Kg/GJ`** | ❌ **不是熱量欄**                   |
+| `LOCAL`                                                                                                                                           | Lokal produktion     | 生產             | 全期恆為 0,無資料                   |
+
+⚠️ 佔比是 2023–2025 完整年、排除 `BE-VL-TOTAL-FAK` 後重算。**舊記錄 64.4/27.3/4.5 是把
+`BE-VL-TOTAL-FAK`(Kg/GJ)誤加進 MW_th 分母的結果**,已修正。
+
+⚠️ **CTR+VEKS 是「傳輸層取用量」,不是終端消費總量** —— 官網說明有一部分熱由本地直接送進
+配網、不經傳輸網。對本模型這正好是對的邊界(LP 調度的是接在傳輸網上的機組),但要標明口徑。
+
+**生產 − 消費 = 蓄熱槽 + 損失**:dictionary 明寫 `Produktion i alt *eksklusive op- og
+afladning på varmelagre`(總生產**不含**蓄熱充放)。實測 2023–25:gap 均 +21 MW、std 99、
+**41% 小時為負**、日內有充放循環;月均約佔消費 **1.0–3.7%**(≈2%)= 傳輸網損失。
+三座蓄熱槽(Amager 1,000 MWh/±300 MJ/s、Avedøre 2,200 MWh/±330 MJ/s、
+Høje Taastrup 池儲 3,300 MWh/±30 MJ/s、年僅 25–30 循環)**沒有數值序列**。
+
+**是事後實測不是事前計畫**:dictionary 寫延遲 90 分鐘、每 5 分鐘更新;CO2 說明寫熱電/焚化
+排放是 `målte værdier`。官方定義(首頁):`Varmeplanen skal opfylde fjernvarmeselskabernes
+daglige prognose for varmebehov` → **varmebehov = 熱網公司的需求預測;varmeplan = 調度**。
+
+**其他端點**:`/api/v1/heatdata`(廠級即時值 + 業主與容量,例:Amagerværket 屬 HOFOR、810 MJ/s)、
+`/api/v1/heatdata/dictionary`(**唯一的官方欄位定義**,快照存於 `new_data/heat/varmelast_dictionary.json`)、
+`/api/v1/heatdata/revisionplan`(檢修計畫)。
+**純需求預測在另一個 host**:`app-lasso-api-prod-001.azurewebsites.net/api/prognosis/overall`
+(「14-døgns varmeprognose」,`totalDemand`+`forecastWaste`)—— 但只往未來 14 天、只有日均、
+**無歷史** → 歷史逐時需求只能用 CTR+VEKS。
 
 ⚠️ **已知缺漏**:抓取時 5 個季度因連線中斷失敗(2021 Q1/Q3、2022 Q1/Q3/Q4),
 檔案裡沒有標記。2023 起完整。年涵蓋:2021=4,405h / 2022=2,196h / 2023–2025 各 ~8,760h。
