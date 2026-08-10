@@ -61,7 +61,13 @@ class Plant:
     p_max: float = 258.2  # [TC] CHP 等效凝汽容量 MW_e(單一機組)
     cb: float = 0.45  # [TC] 背壓係數(功熱比下界)
     cv: float = 0.14  # [TC] 抽汽損失係數:每產 1MW_th 熱少發 0.14MW_e 電
-    eta_el: float = 0.409  # [TC] 電效率(net, annual average)
+    # [TC] 電效率(net, **name plate**)。2026-08-10 從 0.409(annual average)改過來:
+    # 目錄的 Cb 是用 name plate 算的(16 張背壓表全中,見 dea.demo() 的基準 self-check),
+    # 而 Cb/Cv/eta_el 同在一組可行域與燃料式裡 → 基準必須一致。舊值是既有 bug。
+    # ⚠️ 代價:name plate 是設計點效率、LP 又沒建停機與最小負載 → **系統性樂觀**。
+    #    可量化的補償見 dea.availability()(木片 0.914 / 氣 CC 0.927 / 煤 0.950),
+    #    但**本模型目前沒有套用它**。
+    eta_el: float = 0.430
     # 排放因子 tCO2/MWh_fuel,**熱電機組與尖峰鍋爐分開設**(2026-08-06 拆開)。
     # 原本共用一個 ef=0.20 → 對生質機組課了不存在的碳成本,系統性高估 CHP 成本、
     # 低估 CHP 競爭力,進而**高估 power-to-heat 的價值**。量級參考 heat/fuelmix.py:
@@ -118,13 +124,22 @@ def dea_plant(arch: str = "wood_chips", est: str = "ctrl", **over) -> Plant:
     return Plant(**{**p, **ARCHETYPES[_ARCH_FUEL[arch]], **over})
 
 
-def cop_from_temp(temp, cop_ref: float = 3.2, t_ref: float = 7.0) -> np.ndarray:
+def cop_from_temp(temp, cop_ref: float = None, t_ref: float = 7.0) -> np.ndarray:
     """熱泵 COP 隨外氣溫下降 —— **這是熱側的關鍵物理耦合**。
 
     天冷時熱需求最高,但熱泵效率最低 → 彈性在最需要的時候最貴。這正是
     [[heat-chp-track]] 核心假說「相關的熱義務侵蝕稀缺時的彈性」的物理來源之一。
     用簡化的 Carnot 比例式:COP ∝ T_hot/(T_hot − T_cold),供水溫固定 70°C。
+
+    🔴 `cop_ref=None` → 取 `Plant.cop_ref`(目錄值 2.8),**故意不寫死數字**。
+    2026-08-10 修:這裡原本硬寫預設 3.2,而 `Plant.cop_ref` 是目錄的 2.8;
+    所有呼叫端都是裸呼叫 `cop_from_temp(temp)` → **實跑的 COP 全期比機組自己的
+    目錄值高 14.3%、熱泵買電低估 12.5%**,而且方向正好**高估 power-to-heat**
+    (C3 章的主題)。改成從 Plant 取值,基準就不可能再漂掉。
+    ⚠️ `t_hot=70°C` 仍是我編的佔位值,不是 CTR/VEKS 的實際供水溫(見 README §⑤)。
     """
+    if cop_ref is None:
+        cop_ref = Plant.cop_ref  # 單一來源:dataclass 的欄位預設值
     t = np.asarray(temp, float)
     t_hot = 70.0 + 273.15
     carnot = t_hot / np.maximum(t_hot - (t + 273.15), 1.0)
@@ -288,8 +303,15 @@ def demo() -> None:
     # ⑥ 熱泵 COP 隨氣溫下降(冷天彈性更貴 —— 核心假說的物理來源)
     cold, mild = cop_from_temp(-10.0), cop_from_temp(10.0)
     assert cold < mild, f"冷天 COP 應較低,得 {cold:.2f} vs {mild:.2f}"
+    # **基準一致性**:參考溫度下的 COP 必須等於機組自己的 cop_ref,否則 LP 的熱泵
+    # 用的是 A 機組的效率、成本卻按 B 機組算(2026-08-10 修掉的 3.2 vs 2.8 就是這個)。
+    assert abs(float(cop_from_temp(7.0)) - pl.cop_ref) < 1e-9, (
+        f"COP 基準漂掉:cop_from_temp(t_ref) = {float(cop_from_temp(7.0)):.3f} "
+        f"≠ Plant.cop_ref = {pl.cop_ref}"
+    )
     print(
-        f"  COP ok: −10°C {cold:.2f} < +10°C {mild:.2f}(冷天熱泵最不划算,而那時熱需求最高)"
+        f"  COP ok: −10°C {cold:.2f} < +10°C {mild:.2f}(冷天熱泵最不划算,而那時熱需求最高);"
+        f"參考點 == 目錄 cop_ref {pl.cop_ref}"
     )
 
     # ⑦ Plant 的預設值必須真的等於目錄值 —— 上面那些數字是手抄的,這行防止它們默默漂掉
@@ -335,7 +357,8 @@ def _real_demo() -> None:
     con.close()
     # 熱需求:用全期校準的度日代理,取這個月;再縮到單一 DH 系統的規模(佔 DK1 的 8%)
     q = heat_demand(d["temp"].to_numpy()) * 0.08
-    cop = cop_from_temp(d["temp"].to_numpy())
+    # 明確傳入該機組的 cop_ref(而不是靠預設值),基準才綁得住
+    cop = cop_from_temp(d["temp"].to_numpy(), cop_ref=dea_plant("gas_cc").cop_ref)
     gas = d["gas"].ffill().bfill().to_numpy()
     co2 = d["co2"].ffill().bfill().to_numpy()  # 真實 EUA(2026-08-07 起全期覆蓋)
     fuels = {  # 原型 → 該燒的燃料價(EUR/MWh_fuel)

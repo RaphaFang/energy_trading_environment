@@ -52,7 +52,10 @@ def load_year(year: int, area: str = "DK1"):
     coal = d["coal"].ffill().bfill().to_numpy()  # API2,2026-08-07 才進 duckdb
     # 真實 EUA 碳價(2026-08-06 接上,2026-08-07 換 ICAP 後全期覆蓋;先前寫死 70 €/t)
     co2 = d["co2"].ffill().bfill().to_numpy()
-    return d, q, gas, coal, co2, cop_from_temp(d["temp"].to_numpy())
+    # 明確傳該機組的 cop_ref:所有原型的熱泵都是目錄同一台(40 Comp. hp, airsource 10 MW),
+    # 但**不要靠預設值** —— 2026-08-10 修掉的 bug 就是 cop_from_temp 預設 3.2 ≠ 目錄 2.8。
+    cop = cop_from_temp(d["temp"].to_numpy(), cop_ref=dea_plant("gas_cc").cop_ref)
+    return d, q, gas, coal, co2, cop
 
 
 def main() -> None:

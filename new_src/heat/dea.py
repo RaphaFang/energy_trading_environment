@@ -119,6 +119,30 @@ CHP_ARCHETYPES = {
 # 比「總容量」看起來的少。要納入必須先在 chp.py 實作背壓式的等式約束。
 
 
+def availability(ws: str, year: int = YEAR, est: str = "ctrl") -> float:
+    """機組年可用率 —— 用來量化「改用 name plate 效率」帶來的樂觀偏誤。
+
+    目錄有兩種寫法,這裡都吃:
+      · 少數表直接給 `Availability`(例:'01 Coal CHP' = 0.95)
+      · 多數只給 `Forced outage` 與 `Planned outage [weeks per year]` → 合成:
+            availability = (1 − forced) × (1 − planned_weeks / 52)
+
+    ⚠️ **`chp.solve()` 目前完全沒有用這個值**,它是資料不是行為。放在這裡是為了讓
+    「name plate = 設計點效率、而 LP 沒建停機與最小負載」的代價可以被量化與引用。
+    要補償的話是拿它**折減 p_max**(容量折減),不必引進整數變數 —— 見 STATUS.md §4.7 ②。
+    """
+    try:
+        return get(ws, "Availability", year, est)
+    except KeyError:
+        pass
+    forced = get(ws, "Forced outage", year, est)
+    try:
+        planned = get(ws, "Planned outage", year, est)
+    except KeyError:
+        planned = 0.0
+    return (1.0 - forced) * (1.0 - planned / 52.0)
+
+
 def plant_params(
     chp_ws: str,
     year: int = YEAR,
@@ -154,12 +178,18 @@ def plant_params(
     g = lambda ws, p: get(ws, p, year, est)
 
     def eta_el(ws: str) -> float:
-        # 多數工作表給「annual average」,但有些(例:'01 Coal CHP')只有「name plate」。
-        # name plate 是額定點效率、略高於年均 → 用得到的那個,並在下面註記差異。
+        # 🔴 **一定要 name plate,不能用 annual average**(2026-08-08 發現、2026-08-10 全面驗證)。
+        # 目錄的 `Cb` 是用 **name plate** 效率算出來的:拿所有**背壓表**(只有它們同時列了
+        # 電效率與熱效率)比對 η_el/η_th 與表列 Cb —— **16 張全中**,name plate 比值的誤差
+        # 全部 ≤0.005,annual average 的誤差最小也有 0.006(見 demo() 的 self-check)。
+        # `Cb`/`Cv`/`η_el` 出現在同一組可行域與燃料式裡 → **基準必須一致**,否則等於
+        # 在同一個 LP 裡混用兩種效率定義。舊版把順序寫反了,是既有 bug。
+        # ⚠️ 代價:name plate 是設計點效率,而 LP 沒有建強迫停機與最小負載 → **系統性樂觀**。
+        #    可量化的補償見 availability();**目前只是資料,solve() 沒有用它**。
         try:
-            return g(ws, "Electrical efficiency (net, annual average)")
-        except KeyError:
             return g(ws, "Electrical efficiency (net, name plate)")
+        except KeyError:
+            return g(ws, "Electrical efficiency (net, annual average)")
 
     day_loss = get(store_ws, "Energy losses during storage", year, est, storage=True)
     return dict(
@@ -210,7 +240,41 @@ def demo() -> None:
         pass
     print("  背壓/抽汽 ok: 背壓式機組會被擋下,不會誤用抽汽可行域")
 
-    # ③ 物理合理性:電效率 0–1、COP > 1、鍋爐效率接近 1
+    # ③ 🔴 **基準一致性** — 目錄的 Cb 是用哪一種效率算的?這決定 eta_el 該取哪一欄。
+    #    只有背壓表同時列了電效率與熱效率,所以拿它們當試紙:若 Cb 是 name plate 基準,
+    #    則 η_el/η_th 的 name plate 比值應該重現表列 Cb,而 annual average 比值不該。
+    np_err, aa_err = [], []
+    for w in (w for w in technologies("") if is_back_pressure(w)):
+        try:
+            cb = get(w, "Cb coefficient")
+            r_np = get(w, "Electrical efficiency (net, name plate)") / get(
+                w, "Heat efficiency (net, name plate)"
+            )
+            r_aa = get(w, "Electrical efficiency (net, annual average)") / get(
+                w, "Heat efficiency (net, annual average)"
+            )
+        except KeyError:
+            continue  # 抽汽表沒有熱效率欄 —— 那正是兩個家族參數化方式不同的證據
+        np_err.append(abs(r_np - cb))
+        aa_err.append(abs(r_aa - cb))
+    assert len(np_err) >= 10, f"可比對的背壓表太少({len(np_err)}),self-check 失去意義"
+    assert max(np_err) < min(aa_err), (
+        f"name plate 應該一致地比 annual average 更貼近 Cb:"
+        f"NP 最差 {max(np_err):.4f} vs AA 最好 {min(aa_err):.4f}"
+    )
+    # 而 plant_params 必須真的取到 name plate 那一欄(這行才是防迴歸的重點)
+    for lab, ws in CHP_ARCHETYPES.items():
+        want = get(ws, "Electrical efficiency (net, name plate)")
+        assert abs(plant_params(ws)["eta_el"] - want) < 1e-9, (
+            f"{lab} 的 eta_el 沒有取 name plate(基準混用,就是 2026-08-08 那個 bug)"
+        )
+    print(
+        f"  基準 ok: {len(np_err)} 張背壓表全部顯示 Cb 是 **name plate** 基準"
+        f"(NP 誤差 ≤{max(np_err):.4f} < AA 誤差 ≥{min(aa_err):.4f});"
+        f"四個原型的 eta_el 都取到 name plate"
+    )
+
+    # ④ 物理合理性:電效率 0–1、COP > 1、鍋爐效率接近 1
     p = plant_params("09a Wood Chips extract. plant")
     assert 0 < p["eta_el"] < 1, f"電效率應在 0–1,得 {p['eta_el']}"
     assert p["cop_ref"] > 1, f"熱泵 COP 應 >1,得 {p['cop_ref']}"

@@ -33,22 +33,34 @@ dc77dd3 feat: heat track -- scheduling LP and data for CHP + district heating
 ⚠️ **`28be300` 尚未推遠端。**
 開 PR:https://github.com/RaphaFang/energy_trading_environment/pull/new/feat/heat-chp-track
 
-## ② 🔴 已知未修的 bug(下一個 session 第一件事)
+## ② ✅ 基準 bug 已修(2026-08-10,commit 見 git log)
 
-**`chp.Plant.eta_el` 用錯基準。** 2026-08-08 對 CSV 驗證:目錄的 **`Cb` 是用 name plate
-效率算的**(η_el/η_th 比值 5 張表 5 中,annual average 全部對不上)。但 `Plant` 取的是
-annual average → **同一組可行域裡混了兩種基準**。
+**三個同型的基準不一致,已全部修掉並加了防迴歸的 self-check。**
 
-| 原型           | 現在(annual,錯) | 應為(name plate)                          |
-| -------------- | --------------- | ----------------------------------------- |
-| `wood_chips`   | 0.409           | **0.43**                                  |
-| `wood_pellets` | 0.425           | **0.447**                                 |
-| `gas_cc`       | 0.56            | **0.59**                                  |
-| `coal`         | 0.485           | 0.485(該表只有 name plate,誤打誤撞已正確) |
+**① `eta_el` 改用 name plate**(`dea.py` 的 `eta_el()` 把 annual/name-plate 的優先序倒過來)。
+證據從 5 張表擴充到**全部 16 張可比對的背壓表**(只有背壓表同時列電效率與熱效率):
+name plate 的 η_el/η_th 比值與表列 `Cb` 的誤差**全部 ≤0.0049**,annual average 的誤差
+**最小也有 0.0061** —— 兩群完全不重疊。`dea.demo()` 現在會重跑這個比對。
 
-⚠️ 代價要一起處理:name plate 是設計點效率,而 LP **沒有建強迫停機或最小負載**
-→ 系統性樂觀。目錄有 `Availability` / `Forced outage` / `Minimum load` 三欄
-(木片抽汽:forced 0.03、min load 0.45),用 availability 當**容量折減**就補得回來,不必動整數。
+| 原型           | 舊(annual,錯) | 現在(name plate) |
+| -------------- | -------------- | ----------------- |
+| `wood_chips`   | 0.409          | **0.430**         |
+| `wood_pellets` | 0.425          | **0.447**         |
+| `gas_cc`       | 0.56           | **0.59**          |
+| `coal`         | 0.485          | 0.485(該表本來就只有 name plate) |
+
+**② `cop_from_temp` 的 `cop_ref` 預設寫死 3.2,而 `Plant.cop_ref` 是目錄的 2.8**,
+且所有呼叫端都是裸呼叫 → **實跑 COP 全期高 14.3%、熱泵買電低估 12.5%**,方向正好
+**高估 power-to-heat**(C3 章主題)。改成 `cop_ref=None` 時取 `Plant.cop_ref`,
+數字不再有第二個來源;呼叫端也改成明確傳入。
+
+**③ 加了兩個基準一致性 self-check**:`dea.demo()` 驗 Cb 的基準並確認四個原型都取到
+name plate;`chp.demo()` 驗 `cop_from_temp(t_ref) == Plant.cop_ref`。
+
+⚠️ **代價仍在,只是現在可量化**:name plate 是設計點效率,而 LP 沒有建強迫停機或最小負載
+→ 系統性樂觀。新增 `dea.availability(ws)`(直接讀 `Availability`,沒有就用
+`(1−forced)×(1−planned週/52)` 合成):木片 **0.914** / 氣 CC **0.927** / 煤 **0.950**。
+**它目前只是資料,`solve()` 沒有用它** —— 要補償是拿它折減 `p_max`,不必動整數變數。
 
 ## ③ 🔴 結構性阻塞:LP 表達不了背壓機組,而 DK2 有 27% 的熱靠它們
 
@@ -107,7 +119,7 @@ Store                 141b Large TTES
 
 ## ⑦ 立即可做的下一步(依順序)
 
-1. **修 `eta_el` 基準**(見 ②)—— 四個數字 + 一個基準一致性 self-check。既有 bug,獨立於重構。
+1. ~~修 `eta_el` 基準~~ → **✅ 2026-08-10 已修**(見 ②,三個基準 bug 一起)。
 2. **加背壓類別**(見 ③)—— 要動 `solve()` 的約束矩陣。DK2 的 27% 卡在這。
 3. **`source` 五元組 + `Fuel` 拆出來**(見 ④)。
 4. 抓 varmelast `/api/v1/heatdata` 廠級所有權+容量 → 解掉機組尺寸與 agent 切分。
@@ -119,7 +131,8 @@ Store                 141b Large TTES
   刪了無法從 repo 還原。`new_data/fuel/` 那兩個舊單欄檔雖被 `raw/` 取代,
   但 `load_duckdb._series()` 仍會 fallback 讀 → **等 duckdb 重建並驗證後再議**。
 - **不要把 `chp.Plant` 跑出來的金額當結論引用。** 技術參數雖已是目錄真值,但
-  ①`eta_el` 基準還沒修 ②機組容量與熱網規模沒對齊(目錄是單一機組典型值,
+  ①~~`eta_el` 基準還沒修~~(已修,但**成本水準因此改變**:氣 CC 2024-01 從 €11.2 → €6.1/MWh_th)
+  ②機組容量與熱網規模沒對齊(目錄是單一機組典型值,
   試算比值 1.7×–2.9×,多出來的容量當純凝汽電廠賣電、利潤被記進「供熱成本」
   → 煤原型跑出 −€16/MWh_th)③`chp._real_demo` 的熱需求仍建立在 DK1 佔位值
   `19.0 × 0.08` 上。**方向可引用,水準不可引用。**
