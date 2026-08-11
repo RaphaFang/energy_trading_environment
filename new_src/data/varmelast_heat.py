@@ -9,7 +9,8 @@
   3. legend 的分類(廢棄物/熱電/尖峰生質/尖峰氣/本地)**幾乎一對一對應 heat/chp.py 的
      LP 結構** → 可以直接驗證排程模型,不只驗證需求代理。
 
-涵蓋:2021 起(2019/2020 無資料),逐時,單位 MJ/s = MW_th。
+涵蓋:**2021-01 → 2026-07,逐時,48,887 列,每年都完整**(單位 MJ/s = MW_th)。
+2019/2020 沒有資料。當初 5 個季度的缺口是抓取失敗,2026-08-11 已用 `fill_gaps()` 補齊。
 
 🔴 **這個端點同時回傳兩類欄位,用途完全不同,混用會造成循環論證**(2026-08-09 查證,
 官方欄位定義快照存在 `new_data/heat/varmelast_dictionary.json`):
@@ -108,6 +109,60 @@ def fetch_range(start_year: int = 2021, end_year: int = 2026) -> pd.DataFrame:
     )
 
 
+def fill_gaps(path, ranges) -> int:
+    """補抓指定期間並**合併**進既有檔(不是重抓整份)。回傳新增列數。
+
+    為什麼需要:2026-08-09 盤點發現 5 個季度當初因連線中斷整段沒抓到
+    (2021 Q1/Q3、2022 Q1/Q3/Q4)—— **那是抓取失敗不是沒有資料**,而 2022 正好是
+    能源危機年、電價最極端,對研究策略行為最有價值。
+
+    安全作法(`new_data/` 是 gitignored,刪了無法還原):
+      ① 只**新增**既有檔沒有的時間戳,既有列一律以舊檔為準
+      ② 寫入前先驗證「舊資料逐格不變」,不通過就中止
+      ③ 先寫 .tmp 再 rename,中途失敗不會留下半個檔
+    """
+    old = pd.read_parquet(path)
+    old["timestamp"] = pd.to_datetime(old["timestamp"], utc=True)
+    parts = []
+    for a, b in ranges:
+        try:
+            p = fetch(a, b)
+        except Exception as e:
+            print(f"  ! {a}→{b}: {type(e).__name__} {str(e)[:60]}")
+            continue
+        print(f"  · {a}→{b}: 回傳 {len(p)} 列")
+        if len(p):
+            parts.append(p)
+        time.sleep(2)  # 禮貌間隔:小型公用事業站
+    if not parts:
+        print("  (沒有任何新資料)")
+        return 0
+
+    new = pd.concat(parts)
+    new = new[~new["timestamp"].isin(old["timestamp"])]  # 只要舊檔沒有的
+    if not len(new):
+        print("  (回傳的時間戳舊檔都已經有了,不動檔案)")
+        return 0
+    merged = (
+        pd.concat([old, new])
+        .sort_values("timestamp")
+        .drop_duplicates("timestamp", keep="first")  # 衝突時保留舊值
+        .reset_index(drop=True)
+    )
+    # ② 舊資料必須逐格不變 —— 這是「合併」而不是「重抓」的定義
+    chk = merged[merged["timestamp"].isin(old["timestamp"])].reset_index(drop=True)
+    o = old.sort_values("timestamp").reset_index(drop=True)
+    assert len(chk) == len(o), f"舊列數變了:{len(o)} → {len(chk)}"
+    assert chk["timestamp"].equals(o["timestamp"]), "舊時間戳被動到了"
+    for c in o.columns:
+        if c != "timestamp":
+            assert chk[c].equals(o[c]), f"舊資料的 {c} 欄被改動了 —— 中止"
+    tmp = path.with_suffix(".tmp.parquet")
+    merged.to_parquet(tmp, index=False, engine="pyarrow", compression="snappy")
+    tmp.replace(path)
+    return len(new)
+
+
 if __name__ == "__main__":
     from pathlib import Path
 
@@ -115,7 +170,19 @@ if __name__ == "__main__":
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "varmelast_ckb_2021_2026.parquet"
     if path.exists():
-        print(f"· 已存在,跳過 → {path}")
+        # 當初失敗的 5 個季度(見 fill_gaps 的 docstring)。順帶試 2021 Q1 的 1–2 月,
+        # 確認「2021 起才有資料」是真的,還是也只是沒抓到。
+        GAPS = [
+            ("2021-01-01", "2021-04-01"),
+            ("2021-07-01", "2021-10-01"),
+            ("2022-01-01", "2022-04-01"),
+            ("2022-07-01", "2022-10-01"),
+            ("2022-10-01", "2022-12-31"),
+        ]
+        print(f"· 檔案已存在 → 只補抓當初失敗的 {len(GAPS)} 個季度")
+        n = fill_gaps(path, GAPS)
+        d = pd.read_parquet(path)
+        print(f"✓ 新增 {n:,} 列,現在共 {len(d):,} 列 → {path}")
     else:
         d = fetch_range()
         assert len(d), "沒抓到任何資料"
