@@ -84,6 +84,13 @@ class Plant:
     # (真實熱網一定有足夠備援鍋爐,只是台數多),不是某一台機組的銘牌值。
     pb_max: float = 1e4
     eta_pb: float = 1.03  # [TC] 尖峰鍋爐效率(>1 是因為目錄以低位發熱值 LHV 計)
+    # 變動 O&M。**目錄對 CHP 記在 EUR/MWh_e、對純熱機組記在 EUR/MWh_h**(不是我選的記帳方式)
+    # → CHP 沒有「每 MWh_th」的項,`vom_th` 留 0。成本函數靠參數歸零吸收,不分支。
+    vom_e: float = 2.765  # [TC] CHP 每 MWh_e 的變動 O&M
+    vom_th: float = 0.0  # CHP 每 MWh_th 的變動 O&M —— 目錄不這樣記,固定 0
+    vom_eb: float = 0.84  # [TC] 電鍋爐 每 MWh_th
+    vom_hp: float = 0.86  # [TC] 熱泵 每 MWh_th
+    vom_pb: float = 1.17  # [TC] 尖峰鍋爐 每 MWh_th
     s_max: float = 2880.0  # [TC] 蓄熱槽容量 MWh_th(141b Large TTES)
     s_rate: float = 288.0  # [TC] 蓄熱槽充/放速率 MW_th
     s_loss: float = 0.0025  # [TC] 每小時散熱損失比例(目錄給 %/day ÷ 24)
@@ -97,6 +104,12 @@ ARCHETYPES = {
     "gas": dict(ef_chp=0.20, ef_pb=0.20),  # 天然氣熱電 + 天然氣尖峰鍋爐
     "biomass": dict(ef_chp=0.0, ef_pb=0.20),  # 生質熱電(EU ETS 零碳)+ 天然氣尖峰鍋爐
     "coal": dict(ef_chp=0.34, ef_pb=0.20),  # 燃煤熱電;DK1 2025 仍佔 27.8%
+    # 垃圾焚化:**燃料價是負的**(收處理費),用 assumptions.waste_fuel_price_eur_mwh()。
+    # ⚠️ 排放因子仍是量級值,而且與 THETA_WASTE 有**重複計入**的風險:
+    #    PHI_GATE 那筆處理費已內含 ARC 自己應繳的垃圾稅費。
+    # 🔴 **目前跑不了**:目錄裡的 WtE 全是背壓式,`solve()` 的抽汽可行域不適用。
+    #    這一列先放著,等背壓類別做好就能直接用。
+    "waste": dict(ef_chp=0.0, ef_pb=0.20),
 }
 
 # DEA 技術原型 → 燃料別(決定排放因子)。鍵對應 dea.CHP_ARCHETYPES。
@@ -120,7 +133,18 @@ def dea_plant(arch: str = "wood_chips", est: str = "ctrl", **over) -> Plant:
     import dea  # 延後匯入:chp.py 不該因為缺 new_data/DEA_data 就 import 失敗
 
     p = dea.plant_params(dea.CHP_ARCHETYPES[arch], est=est)
-    p.pop("pb_max")
+    p.pop("pb_max")  # 一律用 Plant 的可行性後備值,理由見 pb_max 的註解
+    # 🔴 目錄沒有 ctrl 中央估計的欄位會是 None(2026-08-11 起,舊版偷填 lower/upper 中點)。
+    #    **不沿用 Plant 的預設值**、也不自己編 —— 逼呼叫端明確給,因為這些幾乎都是容量,
+    #    而容量是業主的設計選擇,直接決定這個 agent 在市場上有多大(= 本論文的主題)。
+    missing = [k for k, v in p.items() if v is None and k not in over]
+    if missing:
+        raise dea.NoCentralEstimate(
+            f"原型 {arch!r}({dea.CHP_ARCHETYPES[arch]})的 {missing} 在目錄裡**沒有 ctrl "
+            f"中央估計**,只有 lower/upper。請明確傳入,例如 dea_plant({arch!r}, "
+            f"{missing[0]}=...),並在呼叫端註明依據(真實機組容量 > 目錄區間端點 > 猜)。"
+        )
+    p = {k: v for k, v in p.items() if v is not None}
     return Plant(**{**p, **ARCHETYPES[_ARCH_FUEL[arch]], **over})
 
 
@@ -147,6 +171,51 @@ def cop_from_temp(temp, cop_ref: float = None, t_ref: float = 7.0) -> np.ndarray
     return cop_ref * carnot / carnot_ref
 
 
+def _cost_coeffs(pl, p, fp, fpb, cp, c_hp, tau=0.0, kappa=0.0, theta=0.0) -> dict:
+    """**整個模型的成本函數就是這裡的一條式子**,涵蓋全部機組,靠參數歸零切換。
+
+        c = (p_fuel + ef·p_CO2 + θ)·F  +  vom_e·P⁺ + vom_th·Q  −  p_el·P  +  (τ+κ)·P⁻
+
+    回傳 {變數區塊: 逐時成本係數}。**刻意不為機組類型開分支** —— 生質/垃圾/電鍋爐/熱泵
+    的差別全部表現成參數,而不是 if。
+
+    P⁺/P⁻ 不需要在 LP 裡用 max():**賣電與買電本來就是不同的變數區塊**,每塊的電力方向
+    是建模時已知的常數 `el`,所以 `max(−el, 0)` 在建矩陣時就算掉了,問題仍是線性的。
+
+        區塊   fuel_per_out   el(正=賣/負=買)   vom       說明
+        P      1/η_el         +1                vom_e     CHP 發電
+        Qc     cv/η_el         0                vom_th    CHP 抽汽產熱(目錄不這樣記 → 0)
+        Qe     0              −1/η_eb           vom_eb    電鍋爐:買電產熱
+        Qh     0              −1/COP_t          vom_hp    熱泵:同上,但 el 隨氣溫變
+        Qpb    1/η_pb          0                vom_pb    尖峰鍋爐:燒燃料不發電
+
+    三種燃料怎麼靠參數切換(不是靠 if):
+      · 生質 CHP  θ 不適用(傳 0);P⁻ 恆為 0(沒有買電的區塊)
+      · 垃圾 CHP  `fuel_price` 傳**負值**(= −φ 處理費換算,見 assumptions);θ 適用
+      · 電鍋爐/熱泵  fuel_per_out = 0 → 燃料項整條消失;el < 0 → (τ+κ) 才生效
+
+    ⚠️ θ 只掛在 CHP 的燃料項:尖峰鍋爐燒的是天然氣,不是垃圾。
+    """
+
+    def coeff(fuel_price, ef, th, fuel_per_out, el, vom):
+        el = np.asarray(el, float)
+        return (
+            (fuel_price + ef * cp + th) * fuel_per_out  # 燃料 + 碳 + 垃圾稅
+            + vom  # 變動 O&M
+            - p * el  # 賣電收入(el<0 時自動變成買電支出)
+            + (tau + kappa) * np.maximum(-el, 0.0)  # 只有買電才付的稅費與網費
+        )
+
+    one = np.ones_like(p)
+    return {
+        "P": coeff(fp, pl.ef_chp, theta, 1.0 / pl.eta_el, one, pl.vom_e),
+        "Qc": coeff(fp, pl.ef_chp, theta, pl.cv / pl.eta_el, 0.0 * one, pl.vom_th),
+        "Qe": coeff(0.0, 0.0, 0.0, 0.0, -one / pl.eta_eb, pl.vom_eb),
+        "Qh": coeff(0.0, 0.0, 0.0, 0.0, -one / c_hp, pl.vom_hp),
+        "Qpb": coeff(fpb, pl.ef_pb, 0.0, 1.0 / pl.eta_pb, 0.0 * one, pl.vom_pb),
+    }
+
+
 def solve(
     price,
     heat_demand,
@@ -156,6 +225,9 @@ def solve(
     fuel_price_pb=None,
     cop=None,
     s_init: float = 0.0,
+    tau: float = None,
+    kappa: float = None,
+    theta: float = None,
 ):
     """解一段期間的最適排程。回傳 dict:各項出力陣列 + 利潤(€)。
 
@@ -164,9 +236,19 @@ def solve(
     fuel_price   CHP 燃料價 €/MWh_fuel(純量或逐時);fuel_price_pb 預設同 CHP
     cop          熱泵 COP(純量或逐時);None → 用 plant.cop_ref
 
+    tau/kappa/theta  電力稅、網路關稅、垃圾 CO2 稅;None → 用 assumptions.py 的佔位值(0)。
+                     要測「網路關稅是不是 P2H 之謎的答案」就傳
+                     `kappa=assumptions.p2h_tariff_eur_mwh_e()`。
+
     蓄熱槽預設從空的開始(s_init=0)且不加期末條件:因為 S≥0 與動態式已保證
     「放出來的必定先充進去」,不會憑空生熱,所以不需要期末歸零(對照電池線的週窗歸零)。
     """
+    import assumptions as A
+
+    A.warn_placeholders()  # 每個 process 印一次:哪些成本被歸零了
+    tau = A.TAU_EL if tau is None else tau
+    kappa = A.KAPPA_NET if kappa is None else kappa
+    theta = A.THETA_WASTE if theta is None else theta
     pl = plant or Plant()
     p = np.asarray(price, float)
     d = np.asarray(heat_demand, float)
@@ -202,14 +284,9 @@ def solve(
         for i, k in enumerate(["P", "Qc", "Qe", "Qh", "Qpb", "ch", "dis", "S"])
     }
 
-    # 目標:最小化 −利潤。燃料成本 = (燃料價 + CO2價×排放因子) × 燃料量
-    cost_fuel = fp + cp * pl.ef_chp  # CHP 的 €/MWh_fuel(含碳)
     c = np.zeros(n)
-    c[sl["P"]] = -p + cost_fuel / pl.eta_el  # 賣電收入 − 發電的燃料成本
-    c[sl["Qc"]] = cost_fuel * pl.cv / pl.eta_el  # 抽汽產熱的燃料代價
-    c[sl["Qe"]] = p / pl.eta_eb  # 電鍋爐:買電
-    c[sl["Qh"]] = p / c_hp  # 熱泵:買電(COP 越高越便宜)
-    c[sl["Qpb"]] = (fpb + cp * pl.ef_pb) / pl.eta_pb  # 尖峰鍋爐燒燃料(自己的排放因子)
+    for k, v in _cost_coeffs(pl, p, fp, fpb, cp, c_hp, tau, kappa, theta).items():
+        c[sl[k]] = v
 
     I = sp.eye(T, format="csr")
     Z = sp.csr_matrix((T, T))
@@ -314,17 +391,44 @@ def demo() -> None:
         f"參考點 == 目錄 cop_ref {pl.cop_ref}"
     )
 
-    # ⑦ Plant 的預設值必須真的等於目錄值 —— 上面那些數字是手抄的,這行防止它們默默漂掉
+    # ⑥b **重構等價性**:新的單一式子在「vom 全 0 + 三個佔位符全 0」時,必須逐項還原
+    #     2026-08-11 之前那五行手寫的成本係數。這鎖住的是「合併成一條式子」沒有改到經濟學,
+    #     之後的水準變化就只能來自 vom 與稅費,不會是重構的副作用。
+    T2 = 24
+    p2 = np.linspace(-30.0, 150.0, T2)
+    fp2, cp2, cop2 = 28.0, 65.0, np.linspace(2.0, 3.5, T2)
+    z = Plant(vom_e=0.0, vom_th=0.0, vom_eb=0.0, vom_hp=0.0, vom_pb=0.0)
+    cf = fp2 + cp2 * z.ef_chp
+    legacy = {
+        "P": -p2 + cf / z.eta_el,
+        "Qc": np.full(T2, cf * z.cv / z.eta_el),
+        "Qe": p2 / z.eta_eb,
+        "Qh": p2 / cop2,
+        "Qpb": np.full(T2, (fp2 + cp2 * z.ef_pb) / z.eta_pb),
+    }
+    got = _cost_coeffs(
+        z, p2, np.full(T2, fp2), np.full(T2, fp2), np.full(T2, cp2), cop2
+    )
+    for k, want_v in legacy.items():
+        assert np.allclose(got[k], want_v, atol=1e-9), (
+            f"成本函數重構改變了 {k} 的係數:{got[k][:3]} vs 舊 {want_v[:3]}"
+        )
+    print("  成本函數 ok: 單一式子在 vom=0、稅費=0 時逐項還原重構前的五行係數")
+
+    # ⑦ Plant 的預設值必須真的等於目錄值 —— 上面那些數字是手抄的,這行防止它們默默漂掉。
+    #    用**相對**容差 1e-3:上面的字面值是為了可讀性四捨五入過的(例如 vom_e 2.765
+    #    對目錄的 2.76476…),但真正要抓的漂移都遠大於這個量級(eta_el 那次是 5%)。
     if os.path.exists("new_data/DEA_data"):
-        want = dea_plant("wood_chips")
+        want = dea_plant("wood_chips", p_max=Plant.p_max)
         drift = {
             f: (getattr(pl, f), getattr(want, f))
             for f in pl.__dataclass_fields__
-            if abs(getattr(pl, f) - getattr(want, f)) > 1e-9
+            if not np.isclose(getattr(pl, f), getattr(want, f), rtol=1e-3, atol=1e-9)
         }
         assert not drift, f"Plant 預設值與 DEA 目錄不一致(手抄漂掉了):{drift}"
         # 背壓係數隨技術差 4 倍 → 不存在「通用 Cb」,原本猜 0.75 高估木片近一倍
-        cbs = {a: dea_plant(a).cb for a in _ARCH_FUEL}
+        # ⚠️ gas_cc 目錄沒有 ctrl 容量 → 必須明確給,否則 dea_plant 會擋(見 dea.get)
+        cbs = {a: dea_plant(a, p_max=1.0).cb for a in _ARCH_FUEL}
         assert max(cbs.values()) / min(cbs.values()) > 3, f"Cb 應隨技術大幅變動:{cbs}"
         print(
             "  DEA ok: Plant 預設 == 目錄木片抽汽值;各原型 Cb = "
@@ -357,18 +461,22 @@ def _real_demo() -> None:
     con.close()
     # 熱需求:用全期校準的度日代理,取這個月;再縮到單一 DH 系統的規模(佔 DK1 的 8%)
     q = heat_demand(d["temp"].to_numpy()) * 0.08
-    # 明確傳入該機組的 cop_ref(而不是靠預設值),基準才綁得住
-    cop = cop_from_temp(d["temp"].to_numpy(), cop_ref=dea_plant("gas_cc").cop_ref)
+    # cop_ref 不傳 → 取 Plant.cop_ref(目錄值,唯一來源;demo() 的 ⑥ 會擋住漂移)
+    cop = cop_from_temp(d["temp"].to_numpy())
     gas = d["gas"].ffill().bfill().to_numpy()
     co2 = d["co2"].ffill().bfill().to_numpy()  # 真實 EUA(2026-08-07 起全期覆蓋)
-    fuels = {  # 原型 → 該燒的燃料價(EUR/MWh_fuel)
-        "gas_cc": gas,
-        "coal": d["coal"].ffill().bfill().to_numpy(),
+    # 原型 → (燃料價, 要跑的 p_max)。
+    # 🔴 **氣 CC 目錄沒有 ctrl 容量**(只有 lower=100 / upper=500,5 倍區間)→ 舊版偷填中點
+    #    300 並被當成「目錄真值」引用。現在**兩端都跑**,讓讀者看到結論有多依賴這個選擇。
+    #    煤有 ctrl 容量(500),只跑一個。
+    fuels = {
+        "gas_cc": (gas, [100.0, 500.0]),
+        "coal": (d["coal"].ffill().bfill().to_numpy(), [500.0]),
     }
     r = solve(
         d["price"].to_numpy(),
         q,
-        dea_plant("gas_cc"),
+        dea_plant("gas_cc", p_max=100.0),  # 下界;上界的結果見下方表格
         fuel_price=gas,
         co2_price=co2,
         cop=cop,
@@ -400,23 +508,25 @@ def _real_demo() -> None:
     )
     # 燃料價有真值的兩個原型並排(碳價已是真實 EUA)。生質缺價,故意不列。
     print("\n  單位供熱淨成本(原型 × 對應燃料價 × 真實 EUA):")
-    for a, fp in fuels.items():
-        # 尖峰鍋爐一律燒天然氣(見 ARCHETYPES 的 ef_pb)→ 煤機組也要用氣價當 pb 燃料
-        rr = solve(
-            d["price"].to_numpy(),
-            q,
-            dea_plant(a),
-            fuel_price=fp,
-            fuel_price_pb=gas,
-            co2_price=co2,
-            cop=cop,
-        )
-        pl = dea_plant(a)
-        print(
-            f"    {a:8} 燃料均 €{fp.mean():5.1f}/MWh_fuel → "
-            f"**€{rr['heat_cost_per_mwh']:6.1f}/MWh_th**(CHP 均 {rr['P'].mean():.0f} MW_e,"
-            f"機組 {pl.p_max:.0f} MW_e / 熱網均 {q.mean():.0f} MW_th = {pl.p_max / q.mean():.1f}×)"
-        )
+    for a, (fp, pmaxes) in fuels.items():
+        for pm in pmaxes:
+            # 尖峰鍋爐一律燒天然氣(見 ARCHETYPES 的 ef_pb)→ 煤機組也要用氣價當 pb 燃料
+            pl = dea_plant(a, p_max=pm)
+            rr = solve(
+                d["price"].to_numpy(),
+                q,
+                pl,
+                fuel_price=fp,
+                fuel_price_pb=gas,
+                co2_price=co2,
+                cop=cop,
+            )
+            src = "目錄無 ctrl" if len(pmaxes) > 1 else "目錄 ctrl"
+            print(
+                f"    {a:8} p_max={pm:5.0f} MW_e ({src:11}) 燃料均 €{fp.mean():5.1f} → "
+                f"**€{rr['heat_cost_per_mwh']:7.1f}/MWh_th**"
+                f"(CHP 均 {rr['P'].mean():5.0f} MW_e,機組/熱網 = {pm / q.mean():.1f}×)"
+            )
     print("    biomass  ✗ 無燃料價來源(木片/顆粒無國際期貨)→ 目前跑不了,不是模型問題")
 
 

@@ -138,8 +138,8 @@ def main() -> None:
 
     print("\n--- ④ 移轉到 DK1 的規模錨點 ---")
     print(f"  大哥本哈根(CTR+VEKS)年熱量 = {y.mean() * 8760 / 1e6:.2f} TWh_th")
-    print(f"  `demand.ANNUAL_TWH_DK1 = 19.0` 是佔位值 → 需用能源署 DK1 統計替換;")
-    print(f"  本數字可當合理性檢查(丹麥全國 DH 約 30 TWh 量級)。")
+    print("  `demand.ANNUAL_TWH_DK1 = 19.0` 是佔位值 → 需用能源署 DK1 統計替換;")
+    print("  本數字可當合理性檢查(丹麥全國 DH 約 30 TWh 量級)。")
 
 
 if __name__ == "__main__":

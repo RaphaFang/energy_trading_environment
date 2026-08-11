@@ -33,6 +33,15 @@ from demand import heat_demand  # noqa: E402
 # ⚠️ 佔位值,與 demand.ANNUAL_TWH_DK1 一樣待能源署統計校準。
 SYSTEM_SHARE = 0.08
 
+# 每個原型要用的 p_max [MW_e]。**必須明確給**:2026-08-11 起 dea.get() 不再對沒有 ctrl
+# 中央估計的參數偷填 (lower+upper)/2(見 dea.NoCentralEstimate)。
+#   coal   500 = 目錄 ctrl 真值
+#   gas_cc 100 = **目錄沒有 ctrl**,只有 lower=100 / upper=500 → 取下界並明講這是選擇。
+#              取下界的理由:試算熱網均只有 174 MW_th,500 MW_e 的機組多出來的容量會
+#              當純凝汽電廠賣電、利潤記進「供熱成本」(那正是煤跑出負成本的機制)。
+#              ⚠️ 這是**建模選擇不是目錄值**,水準不可引用;兩端的差距見 chp._real_demo()。
+ARCH_PMAX = {"gas_cc": 100.0, "coal": 500.0}
+
 
 def load_year(year: int, area: str = "DK1"):
     con = duckdb.connect("new_data/energy.duckdb", read_only=True)
@@ -52,9 +61,9 @@ def load_year(year: int, area: str = "DK1"):
     coal = d["coal"].ffill().bfill().to_numpy()  # API2,2026-08-07 才進 duckdb
     # 真實 EUA 碳價(2026-08-06 接上,2026-08-07 換 ICAP 後全期覆蓋;先前寫死 70 €/t)
     co2 = d["co2"].ffill().bfill().to_numpy()
-    # 明確傳該機組的 cop_ref:所有原型的熱泵都是目錄同一台(40 Comp. hp, airsource 10 MW),
-    # 但**不要靠預設值** —— 2026-08-10 修掉的 bug 就是 cop_from_temp 預設 3.2 ≠ 目錄 2.8。
-    cop = cop_from_temp(d["temp"].to_numpy(), cop_ref=dea_plant("gas_cc").cop_ref)
+    # cop_ref 不傳 → 取 Plant.cop_ref(目錄值,唯一來源;chp.demo() 的 ⑥ 會擋住漂移)。
+    # 2026-08-10 修掉的 bug 是 cop_from_temp 自己寫死 3.2 ≠ 目錄 2.8,現在沒有第二個來源。
+    cop = cop_from_temp(d["temp"].to_numpy())
     return d, q, gas, coal, co2, cop
 
 
@@ -74,14 +83,15 @@ def main() -> None:
 
     def variants_for(arch: str) -> dict:
         """同一台 DEA 目錄機組,逐一關掉彈性選項。**技術參數全是目錄真值**(2026-08-07)。"""
+        pm = ARCH_PMAX[arch]
         return {
-            "① 全部都有(基準)": dea_plant(arch),
-            "② 拿掉蓄熱槽": dea_plant(arch, s_max=0.0, s_rate=0.0),
-            "③ 拿掉電鍋爐": dea_plant(arch, eb_max=0.0),
-            "④ 拿掉熱泵": dea_plant(arch, hp_max=0.0),
-            "⑤ 拿掉全部 power-to-heat": dea_plant(arch, eb_max=0.0, hp_max=0.0),
+            "① 全部都有(基準)": dea_plant(arch, p_max=pm),
+            "② 拿掉蓄熱槽": dea_plant(arch, p_max=pm, s_max=0.0, s_rate=0.0),
+            "③ 拿掉電鍋爐": dea_plant(arch, p_max=pm, eb_max=0.0),
+            "④ 拿掉熱泵": dea_plant(arch, p_max=pm, hp_max=0.0),
+            "⑤ 拿掉全部 power-to-heat": dea_plant(arch, p_max=pm, eb_max=0.0, hp_max=0.0),
             "⑥ 只剩 CHP + 尖峰鍋爐(零彈性)": dea_plant(
-                arch, s_max=0.0, s_rate=0.0, eb_max=0.0, hp_max=0.0
+                arch, p_max=pm, s_max=0.0, s_rate=0.0, eb_max=0.0, hp_max=0.0
             ),
         }
 

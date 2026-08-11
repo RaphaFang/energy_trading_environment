@@ -85,7 +85,7 @@ def main() -> None:
         rr = full.loc[y]
         implied = sum(rr[c] / rr["thermal"] * EF_HINT[c] for c in have)
         print(f"\n  {y} 年出力加權隱含排放因子 ≈ {implied:.3f} tCO2/MWh_fuel")
-    print(f"  對照:chp.Plant 原本寫死 ef = 0.20 給所有燃料")
+    print("  對照:chp.Plant 原本寫死 ef = 0.20 給所有燃料")
 
     print(
         "\n讀法:若生質+廢棄物佔比高,原型機組應設成**零碳燃料**,\n"

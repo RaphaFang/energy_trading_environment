@@ -33,6 +33,14 @@ YEAR = 2020  # 研究期間 2019–2025;目錄格點是 2015/2020/2030/2050,取 
 # (lower/upper 只有 2020 與 2050 兩個年份,所以 2020 是唯一三種估計都齊的年份)
 
 
+class NoCentralEstimate(KeyError):
+    """目錄對這個參數只給 lower/upper,**沒有 ctrl 中央估計**。
+
+    這不是資料缺漏,通常是因為該參數(尤其是**容量**)是業主的設計選擇而非技術屬性。
+    刻意做成 `KeyError` 的子類別:既能被既有的 `except KeyError` 接住,又能單獨捕捉。
+    """
+
+
 @lru_cache(maxsize=2)
 def _load(path: str) -> pd.DataFrame:
     return pd.read_csv(path)
@@ -66,14 +74,21 @@ def get(
     want = s[s.est == est]
     if len(want):
         return _nearest(want)
-    # 退回規則:某些參數目錄只給區間不給中央值(例:天然氣 DH 鍋爐容量只有 lower/upper)。
-    # 要 ctrl 卻沒有 → 用 lower/upper 的中點,並且**不靜默**:回傳值仍是數字,但這個
-    # 情況在 plant_params() 會被記錄到 provenance 裡,不會假裝是目錄的中央估計。
+    # 🔴 **沒有 ctrl 就拋錯,不要自己生一個中點**(2026-08-11 改;舊版回 (lower+upper)/2)。
+    # 目錄對某些技術不給中央估計**是有理由的**:那些參數(尤其是容量)是**業主的設計選擇**,
+    # 不是技術屬性。官方不給中央值是誠實,程式偷偷填一個才是造假 —— 而且填出來的數字
+    # 會被後續當成「目錄真值」引用。實際踩到的兩個:
+    #   · '05 Gas turb. CC' 容量只有 lower=100 / upper=500  → 舊版填了 300(5 倍區間的中點)
+    #   · '44 Natural Gas DH Only' 容量只有 0.5–10 MW_h     → 同樣問題
+    # 要區間就明確要 est='lower'/'upper';要中央值而目錄沒有,就由呼叫端自己決定並註明。
     lo, hi = s[s.est == "lower"], s[s.est == "upper"]
     if est == "ctrl" and len(lo) and len(hi):
-        return (_nearest(lo) + _nearest(hi)) / 2.0
-    if len(s):  # 最後手段:有什麼用什麼
-        return _nearest(s)
+        raise NoCentralEstimate(
+            f"{ws!r} 的 {par_contains!r} **目錄沒有 ctrl 中央估計**,只有 "
+            f"lower={_nearest(lo):g} / upper={_nearest(hi):g}。"
+            f"這通常表示該參數是業主的設計選擇而非技術參數(容量最常見)。"
+            f"請由呼叫端明確給值並註明依據,或改用 est='lower'/'upper'。"
+        )
     raise KeyError(f"{ws!r} / {par_contains!r} 沒有 est={est} 的值")
 
 
@@ -191,18 +206,37 @@ def plant_params(
         except KeyError:
             return g(ws, "Electrical efficiency (net, annual average)")
 
+    def opt(ws: str, p: str):
+        """沒有 ctrl 中央估計 → 回 `None`,**不編一個數字**(見 NoCentralEstimate)。
+
+        回 None 而不是拋錯,是為了讓 `plant_params()` 仍能回傳完整的 dict,
+        由呼叫端(`chp.dea_plant()`)決定怎麼處理 —— 但它**必須**處理,不能默默沿用。
+        """
+        try:
+            return g(ws, p)
+        except NoCentralEstimate:
+            return None
+
     day_loss = get(store_ws, "Energy losses during storage", year, est, storage=True)
     return dict(
-        p_max=g(chp_ws, "Generating capacity for one unit [MW_e]"),
+        # ⚠️ 容量欄用 opt():目錄對氣 CC 與天然氣 DH 鍋爐**都沒有 ctrl 容量**
+        p_max=opt(chp_ws, "Generating capacity for one unit [MW_e]"),
         cb=g(chp_ws, "Cb coefficient"),
         cv=g(chp_ws, "Cv coefficient"),
         eta_el=eta_el(chp_ws),
-        eb_max=g(eb_ws, "Generating capacity for one unit [MW_h]"),
+        eb_max=opt(eb_ws, "Generating capacity for one unit [MW_h]"),
         eta_eb=g(eb_ws, "Heat efficiency (net, annual average)"),
-        hp_max=g(hp_ws, "Generating capacity for one unit [MW_h]"),
+        hp_max=opt(hp_ws, "Generating capacity for one unit [MW_h]"),
         cop_ref=g(hp_ws, "Heat efficiency (net, annual average)"),
-        pb_max=g(pb_ws, "Generating capacity for one unit [MW_h]"),
+        pb_max=opt(pb_ws, "Generating capacity for one unit [MW_h]"),
         eta_pb=g(pb_ws, "Heat efficiency (net, annual average)"),
+        # 變動 O&M。⚠️ **目錄對 CHP 記在 EUR/MWh_e、對純熱機組記在 EUR/MWh_h** —— 這不是
+        # 我選的,是目錄的記帳方式。所以 CHP 沒有「每 MWh_th 的 vom」(vom_th 留 0),
+        # 成本函數靠參數歸零吸收這個差異,不需要為機組類型分支。
+        vom_e=g(chp_ws, "Variable O&M (*total) [EUR/MWh_e]"),
+        vom_eb=g(eb_ws, "Variable O&M (*total) [EUR/MWh_h]"),
+        vom_hp=g(hp_ws, "Variable O&M (*total) [EUR/MWh_h]"),
+        vom_pb=g(pb_ws, "Variable O&M (*total) [EUR/MWh_h]"),
         s_max=get(
             store_ws,
             "Energy storage capacity for one unit [MWh]",
@@ -304,7 +338,14 @@ def main() -> None:
     for lab, ws in cands.items():
         try:
             p = plant_params(ws)
-            print(f"  {lab:<18}" + "".join(f"{p[k]:>10.3f}" for k in keys))
+            # 沒有 ctrl 中央估計的欄位是 None(見 NoCentralEstimate)→ 印 n/a,不要編數字
+            print(
+                f"  {lab:<18}"
+                + "".join(
+                    f"{p[k]:>10.3f}" if p[k] is not None else f"{'n/a':>10}"
+                    for k in keys
+                )
+            )
         except KeyError as e:
             print(f"  {lab:<18}(缺參數:{e})")
 
