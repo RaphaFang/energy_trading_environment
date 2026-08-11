@@ -38,6 +38,9 @@
 | 8   | Energinet `ElectricityBalanceNonv`          | `production_by_fuel.py` | `new_data/production/`        | 分燃料逐時出力(熱側驗證)    | 實測,僅供驗證        |
 | 9   | varmelast.dk `/api/v1/heatdata`             | `varmelast_heat.py`     | `new_data/heat/`              | **DK2 實際逐時熱需求**      | 實測,僅供校準        |
 | 10  | 丹麥能源署 Technology Catalogue             | (手動下載)              | `new_data/DEA_data/`          | **機組技術參數**            | 非時序               |
+| 11  | Energinet `DayAheadPrices`(15 分)          | `elspot_price.py`       | `new_data/price/price15_*`    | **電價 2025-10 之後**       | —                    |
+| 12  | 丹麥能源署 **SØB25** + 稅費費率             | `build_external_params.py` | `new_data/soeb25_&_extra_params/` | **燃料價/排放/稅費/物價指數** | 非時序 |
+| 13  | varmelast `/api/v1/heatdata/dictionary`     | (快照)                  | `new_data/heat/varmelast_dictionary.json` | **官方欄位定義存證** | 非時序 |
 | —   | 合併                                        | `load_duckdb.py`        | `new_data/energy.duckdb`      | → `training` view           | —                    |
 
 ⚠️ `new_data/` 全部 gitignored,不進 repo。**所有指令從專案根目錄跑**(路徑是相對的)。
@@ -207,6 +210,54 @@ EUR/MWh_fuel = (USD/公噸) ÷ (當日 USD per EUR) ÷ 6.978 MWh/公噸
 | 年    | 2019 | 2020 | 2021 | **2022**          | 2023 | 2024 |
 | ----- | ---- | ---- | ---- | ----------------- | ---- | ---- |
 | €/MWh | 14.6 | 9.6  | 47.7 | **133.3(峰 339)** | 41.3 | 34.6 |
+
+---
+
+## 4b. SØB25 與稅費參數(`new_data/soeb25_&_extra_params/`,2026-08-11)
+
+使用者用 `build_external_params.py` 直接讀 xlsx 產生,**沒有任何手打數字,也沒有做貨幣換算
+或平減**(那些是建模決定,屬於下游)。換下一版 SØB 只要改頂端的 XLSX 路徑重跑再 diff。
+
+**拆成三個檔而不是一個**,因為三者「來源」性質不同,硬合併會產生大量空欄位。
+
+| 檔 | 列數 | 內容 |
+| -- | ---- | ---- |
+| `soeb25_params.csv` | 280(20 個 param) | 全部同一出處 → 來源寫在腳本頂端常數,列裡放 `source_table`+`source_cell` 可逐格覆核 |
+| `dk_tax_and_tariff_params.csv` | 4 | **每列出處都不同** → 來源欄逐列保留 |
+| `gaps.csv` | 6 | **缺的東西沒有值** → 欄位是 `what_is_missing`/`where_to_look`/**`do_not_use`**/`blocks` |
+
+出處:Energistyrelsen, *Samfundsøkonomiske beregningsforudsætninger 2025* (soeB25),
+webudgave marts 2026。https://ens.dk/analyser-og-statistik/samfundsoekonomiske-analysemetoder
+
+**🔑 用得到的關鍵值**
+
+| 參數 | 值 | 出處 |
+| ---- | -- | ---- |
+| `el_transport_margin_over_70000MWh` | **189**(2025)/ **167**(2026)DKK2025/MWh_e | Tabel 10 H4/H5 |
+| `heating_value_affald` | **11.70 GJ/ton** | Tabel 1 B18 |
+| `ef_co2_ledningsgas` | **57.1 kg CO2/GJ**,適用 **2025–2031**(2032 起 soeB 改 0,邊際沼氣邏輯) | Tabel 12 |
+| `price_index_2025base` | 2019 **0.8526** / 2020 0.8559 / 2021 0.8687 / 2022 **0.9349** / 2023 0.9730 / 2024 0.9818 / 2025 1.0000 | Tabel 1 |
+| `elafgift_dh_producer_net` | **0.4 øre/kWh**(2021 年起) | ELAL §11 stk.1 與 §11c;法源 2020-12-29 第 2225 號法 |
+| `gate_fee_arc_rest_erhverv` | **635 DKK/ton**(未稅) | ARC 費率表 2025-11-01 |
+
+⚠️ `price_index_2025base` 是把不同年份版本的 soeB 放到同一價格基準的必要工具。
+
+**🔴 為什麼 2019–2024 生質價補不了**:soeB25 的 Tabel 2 與 Tabel 5 **都從 2025 起算**
+—— 它是**預測文件不是歷史統計**。更進一步:Tabel 5 Note 3 明載「計算進口價所用的 forward
+價是 2025 年 1 月抓的」→ **連 2025 那格也是「2025 年初的遠期觀點」,不是實際結算價**。
+`gaps.csv` 的 `biomass_price_2019_2024` 列了兩條可行路徑,以及一條明確的 `do_not_use`:
+**不可拿 2025 那格當更早年份的代理**。
+
+**六項缺口**(`gaps.csv`):`biomass_price_2019_2024`、`co2_afgift_affald`、
+`gate_fee_vestforbraending`、`gate_fee_argo`、`elafgift_2019_2020`、`dk2_unit_capacities`。
+⚠️ **`do_not_use` 欄務必讀** —— 這六項最可能的出錯方式是拿錯的東西替代
+(例:拿 ARC 的費率當 Vestforbrænding 用、拿現在的 elafgift 套 2019 年)。
+
+**兩個容易撿錯的陷阱**:
+1. **elafgift**:法規明文說熱生產者**不能**用家戶的 elvarme 減免稅率。
+   網路上「1 øre/kWh、4,000 kWh 門檻」那組數字全是家戶的,**不適用**。
+2. **ARC 處理費**:該費率**已內含 ARC 自身應繳的垃圾稅費**。
+   若同時把它當負燃料成本、又另外加一個 CO2 稅項,會**重複計入**。
 
 ---
 

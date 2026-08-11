@@ -131,7 +131,7 @@ CHP_ARCHETYPES = {
 # **背壓式**原型(2026-08-11 起 `chp.solve()` 支援)。熱電綁死 P=Cb·Q、**零熱電彈性**。
 # 這些正是 DK2 的垃圾焚化(ARC / Vestforbrænding / ARGO,佔供熱 **27.7%**)。
 # 溫度基準:CTR/VEKS 是高溫傳輸網 → 只能用 50 degree 那批,**不可混用 Medium 的
-# (40°C/80°C)**,那等於偷偷改了熱網溫度(見 STATUS.md §4.7 ③)。
+# (40°C/80°C)**,那等於偷偷改了熱網溫度(見 STATUS.md §4.8 ③)。
 BP_ARCHETYPES = {
     "waste": "08 WtE CHP, Large, 50 degree",  # 46.81 MW_e/台,Cb 0.28
     "waste_medium": "08 WtE CHP, Medium",  # ⚠️ 40/80 低溫基準,DK2 不適用
@@ -149,7 +149,7 @@ def availability(ws: str, year: int = YEAR, est: str = "ctrl") -> float:
 
     ⚠️ **`chp.solve()` 目前完全沒有用這個值**,它是資料不是行為。放在這裡是為了讓
     「name plate = 設計點效率、而 LP 沒建停機與最小負載」的代價可以被量化與引用。
-    要補償的話是拿它**折減 p_max**(容量折減),不必引進整數變數 —— 見 STATUS.md §4.7 ②。
+    要補償的話是拿它**折減 p_max**(容量折減),不必引進整數變數 —— 見 STATUS.md §4.8 ②。
     """
     try:
         return get(ws, "Availability", year, est)
