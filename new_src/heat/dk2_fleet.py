@@ -87,7 +87,7 @@ FLEET = {
         commissioned=NOT_FOUND,
         commissioned_note="(M) København 的 <100MW 合計在 2019–2024 間多次跳動,"
         "但那一組混了太多機組,無法歸因到 ARC。",
-        blocked_by="背壓式 LP 未實作",
+        blocked_by=None,  # ✅ 2026-08-11 背壓式已實作
     ),
     "vestforbraending": dict(
         title="Vestforbrænding",
@@ -102,7 +102,7 @@ FLEET = {
         mw_e=NOT_FOUND,
         mw_e_note="(M) Glostrup 全市 <100MW 合計 41.8 MW_e(2019–2022 完全不變)→ 上界。",
         commissioned=NOT_FOUND,
-        blocked_by="背壓式 LP 未實作 + 進傳輸網的比例未知",
+        blocked_by="進傳輸網的比例未知(背壓式本身已可跑)",
     ),
     "argo": dict(
         title="ARGO — Roskilde Kraftvarmeværk",
@@ -114,7 +114,7 @@ FLEET = {
         mw_e=NOT_FOUND,
         mw_e_note="(M) Roskilde 全市 <100MW 合計 34.9 MW_e(2019–2022 完全不變)→ 上界。",
         commissioned=NOT_FOUND,
-        blocked_by="背壓式 LP 未實作",
+        blocked_by=None,  # ✅ 2026-08-11 背壓式已實作
     ),
 }
 
@@ -139,8 +139,31 @@ PUBLISHED_TOTALS = dict(
 )
 
 
+def derived_mw_e(key: str, cb: float) -> float:
+    """**背壓式**機組的電容量可以從熱容量反推:P = Cb·Q ⇒ P_max = Cb · Q_max。
+
+    這不是繞過 NOT_FOUND,是背壓式的**物理定義**:熱電綁死在一條線上,
+    所以「電容量」與「熱容量」不是兩個獨立的數,給一個就決定另一個。
+    熱容量來自 varmelast(熱網營運者自己講的,對 MW_th 是最高權威),
+    Cb 來自 DEA 目錄 → 兩個都是真值,推出來的也是。
+
+    ⚠️ 只對 `unit_type == "back_pressure"` 成立。抽汽式有凝汽尾,
+    電容量是獨立的自由度,不能這樣推。
+    """
+    v = FLEET[key]
+    assert v["unit_type"] == "back_pressure", (
+        f"{key} 不是背壓式,電容量不能從熱容量反推(抽汽式有獨立的凝汽容量)"
+    )
+    return cb * v["mw_th"]
+
+
 def runnable() -> dict:
-    """現在真的能餵進 `chp.solve()` 的機組。**答案是零台**,這行是要讓它顯眼。"""
+    """現在真的能餵進 `chp.solve()` 的機組。
+
+    2026-08-11 起 = **ARC 與 ARGO**(背壓式已實作,垃圾用處理費當負燃料價,
+    電容量由 `derived_mw_e()` 從熱容量反推)。生質三台仍卡燃料價;
+    Vestforbrænding 卡「進傳輸網的比例未知」。
+    """
     return {k: v for k, v in FLEET.items() if not v.get("blocked_by")}
 
 
@@ -177,9 +200,15 @@ def demo() -> None:
 
     # ⑤ 🔴 最重要的一行:把「一台都跑不了」變成會被看到的事實
     r = runnable()
-    assert not r, f"預期零台可跑,但 {list(r)} 沒有 blocked_by —— 請確認是不是真的解掉了"
+    assert set(r) == {"arc", "argo"}, (
+        f"預期 ARC 與 ARGO 可跑(背壓式已實作、垃圾有處理費當燃料價),實際 {list(r)}"
+    )
     print(
-        f"  🔴 可跑機組 = {len(r)}/6。生質 3 台卡在**燃料價缺**、垃圾 3 台卡在**背壓式未實作**。"
+        f"  ✅ 可跑機組 = {len(r)}/6:{', '.join(r)}(背壓式 2026-08-11 已實作,"
+        f"垃圾用處理費當負燃料價)"
+    )
+    print(
+        "  🔴 仍不可跑:生質 3 台卡**燃料價缺**;Vestforbrænding 卡**進傳輸網的比例未知**。"
     )
 
 

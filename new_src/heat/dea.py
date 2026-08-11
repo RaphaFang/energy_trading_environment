@@ -128,10 +128,15 @@ CHP_ARCHETYPES = {
     "coal": "01 Coal CHP",
 }
 
-# 🚩 **垃圾焚化(WtE)在目錄裡全部是背壓式**('08 WtE CHP, Large/Medium/Small'),
-# 秸稈(09c Straw)也是。→ 這些機組**沒有抽汽可行域,熱電完全綁死**,不能當彈性來源。
-# WtE 佔 DK1 熱電 13.2%、在 DK2(Amager/Vestforbrænding)更吃重 → 車隊有效彈性
-# 比「總容量」看起來的少。要納入必須先在 chp.py 實作背壓式的等式約束。
+# **背壓式**原型(2026-08-11 起 `chp.solve()` 支援)。熱電綁死 P=Cb·Q、**零熱電彈性**。
+# 這些正是 DK2 的垃圾焚化(ARC / Vestforbrænding / ARGO,佔供熱 **27.7%**)。
+# 溫度基準:CTR/VEKS 是高溫傳輸網 → 只能用 50 degree 那批,**不可混用 Medium 的
+# (40°C/80°C)**,那等於偷偷改了熱網溫度(見 STATUS.md §4.7 ③)。
+BP_ARCHETYPES = {
+    "waste": "08 WtE CHP, Large, 50 degree",  # 46.81 MW_e/台,Cb 0.28
+    "waste_medium": "08 WtE CHP, Medium",  # ⚠️ 40/80 低溫基準,DK2 不適用
+    "straw": "09c Straw, Large, 50 degree",  # 38.99 MW_e/台,Cb 0.43
+}
 
 
 def availability(ws: str, year: int = YEAR, est: str = "ctrl") -> float:
@@ -184,13 +189,15 @@ def plant_params(
       s_rate  ← TTES Output capacity for one unit [MW]
       s_loss  ← TTES Energy losses during storage [%/day] ÷ 24 → 每小時比例
     """
-    if is_back_pressure(chp_ws):
-        raise ValueError(
-            f"{chp_ws!r} 是**背壓式**機組:熱電綁死在 P=Cb·Q 這條線上,沒有抽汽可行域。"
-            f"chp.solve() 目前的約束是抽汽式的,套上去會給它不存在的彈性。"
-            f"請改用抽汽式版本(見 CHP_ARCHETYPES),或先在 chp.py 實作背壓式的等式約束。"
-        )
-    g = lambda ws, p: get(ws, p, year, est)
+    # ✅ 2026-08-11 起**背壓式也支援了**(`chp.solve()` 用背壓線上界表達,見那裡的說明)。
+    # 這裡要做的兩件事:標記型式、把 Cv 歸零。
+    # 🔴 **Cv 一定要歸零**:目錄給背壓表填 Cv=1.0 並附註「此值對背壓/ORC 機組不存在」,
+    #    那是**哨兵值不是物理量**。照抄會讓容量線變成 P + 1.0·Qc ≤ P_max —— 憑空多出
+    #    一條不存在的限制,把機組的熱出力砍掉一大半。
+    bp = is_back_pressure(chp_ws)
+
+    def g(ws, p):
+        return get(ws, p, year, est)
 
     def eta_el(ws: str) -> float:
         # 🔴 **一定要 name plate,不能用 annual average**(2026-08-08 發現、2026-08-10 全面驗證)。
@@ -222,7 +229,9 @@ def plant_params(
         # ⚠️ 容量欄用 opt():目錄對氣 CC 與天然氣 DH 鍋爐**都沒有 ctrl 容量**
         p_max=opt(chp_ws, "Generating capacity for one unit [MW_e]"),
         cb=g(chp_ws, "Cb coefficient"),
-        cv=g(chp_ws, "Cv coefficient"),
+        # 背壓式的 Cv 是哨兵值(1.0)→ 歸零,理由見上
+        cv=0.0 if bp else g(chp_ws, "Cv coefficient"),
+        back_pressure=bp,
         eta_el=eta_el(chp_ws),
         eb_max=opt(eb_ws, "Generating capacity for one unit [MW_h]"),
         eta_eb=g(eb_ws, "Heat efficiency (net, annual average)"),
@@ -262,17 +271,25 @@ def demo() -> None:
         f"  DEA ok: 木片大型 CHP 的 Cb = {cb['ctrl']:.3f}(區間 {cb['lower']:.3f}–{cb['upper']:.3f})"
     )
 
-    # ② 背壓式必須被擋下來(它沒有抽汽可行域)
+    # ② 背壓/抽汽要分得出來,而且背壓式的 Cv 哨兵值必須被歸零
     assert is_back_pressure("09a Wood Chips, Large 50 degree"), (
         "木片大型是背壓式,應被判定為 True"
     )
     assert not is_back_pressure("09a Wood Chips extract. plant"), "抽汽式不該被判成背壓"
-    try:
-        plant_params("09a Wood Chips, Large 50 degree")
-        raise AssertionError("背壓式應該要拋錯,不該回傳抽汽參數")
-    except ValueError:
-        pass
-    print("  背壓/抽汽 ok: 背壓式機組會被擋下,不會誤用抽汽可行域")
+    b = plant_params("08 WtE CHP, Large, 50 degree")
+    assert b["back_pressure"] is True, "WtE 應被標記為背壓式"
+    assert b["cv"] == 0.0, (
+        f"背壓式的 cv 必須歸零(目錄的 1.0 是哨兵值),得 {b['cv']} —— "
+        "照抄會讓容量線多出一條不存在的限制"
+    )
+    assert get("08 WtE CHP, Large, 50 degree", "Cv coefficient") == 1.0, (
+        "這張表的 Cv 原始值應該就是哨兵 1.0,若目錄改了要重新確認歸零邏輯"
+    )
+    e = plant_params("09a Wood Chips extract. plant")
+    assert e["back_pressure"] is False and e["cv"] > 0, "抽汽式不該被歸零"
+    print(
+        f"  背壓/抽汽 ok: WtE 標記為背壓且 cv 哨兵值 1.0 已歸零;抽汽式保留 cv={e['cv']:.2f}"
+    )
 
     # ③ 🔴 **基準一致性** — 目錄的 Cb 是用哪一種效率算的?這決定 eta_el 該取哪一欄。
     #    只有背壓表同時列了電效率與熱效率,所以拿它們當試紙:若 Cb 是 name plate 基準,

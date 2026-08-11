@@ -7,6 +7,13 @@
 所以整個問題是線性的。機組啟停(最小負載、啟動成本)才需要整數 —— **第一版刻意不做**,
 先把「熱約束 × 電價」的經濟學跑出來。
 
+**兩種機組型式都支援**(2026-08-11):
+  抽汽式  P ≥ Cb·Q 且 P + Cv·Q ≤ P_max   → 可行域是一塊**面積**,熱電可互換 = 有彈性
+  背壓式  P = Cb·Q(等式)                 → 可行域退化成一條**線**,熱電綁死 = 零彈性
+差別在 `Plant.back_pressure`,而它在約束矩陣裡只改**一個界的值**,不是另開一套矩陣
+(見 solve() 裡背壓線上界的說明)。目錄 33 張 CHP 表有 24 張是背壓式,
+DK2 的垃圾焚化(佔供熱 27.7%)全部是 → 這不是邊角案例。
+
 決策(每小時):
   P_chp  CHP 發電 (MW_e)        Q_chp  CHP 產熱 (MW_th)
   Q_eb   電鍋爐產熱 (MW_th)      Q_hp   熱泵產熱 (MW_th)      ← 這兩個是 power-to-heat,吃電
@@ -59,8 +66,13 @@ class Plant:
     """
 
     p_max: float = 258.2  # [TC] CHP 等效凝汽容量 MW_e(單一機組)
-    cb: float = 0.45  # [TC] 背壓係數(功熱比下界)
+    cb: float = 0.45  # [TC] 背壓係數(抽汽式=功熱比下界;背壓式=功熱比本身)
     cv: float = 0.14  # [TC] 抽汽損失係數:每產 1MW_th 熱少發 0.14MW_e 電
+    # 🔑 **背壓式**:熱電綁死在 P = Cb·Q 一條線上,沒有可行域面積 → 完全沒有熱電彈性。
+    # 目錄 33 張 CHP 表裡 **24 張是背壓式**,而 DK2 的垃圾焚化(佔供熱 27.7%)全部是。
+    # 設 True 時 `solve()` 會把背壓線的上界從 p_max 收成 0(見約束區的說明),
+    # 並且**必須同時 cv=0**(目錄的 Cv=1.0 是哨兵值不是物理量)—— `dea` 會一起設好。
+    back_pressure: bool = False
     # [TC] 電效率(net, **name plate**)。2026-08-10 從 0.409(annual average)改過來:
     # 目錄的 Cb 是用 name plate 算的(16 張背壓表全中,見 dea.demo() 的基準 self-check),
     # 而 Cb/Cv/eta_el 同在一組可行域與燃料式裡 → 基準必須一致。舊值是既有 bug。
@@ -107,8 +119,7 @@ ARCHETYPES = {
     # 垃圾焚化:**燃料價是負的**(收處理費),用 assumptions.waste_fuel_price_eur_mwh()。
     # ⚠️ 排放因子仍是量級值,而且與 THETA_WASTE 有**重複計入**的風險:
     #    PHI_GATE 那筆處理費已內含 ARC 自己應繳的垃圾稅費。
-    # 🔴 **目前跑不了**:目錄裡的 WtE 全是背壓式,`solve()` 的抽汽可行域不適用。
-    #    這一列先放著,等背壓類別做好就能直接用。
+    # ✅ 2026-08-11 起可跑:目錄的 WtE 全是背壓式,而 `solve()` 已支援(back_pressure=True)。
     "waste": dict(ef_chp=0.0, ef_pb=0.20),
 }
 
@@ -118,6 +129,10 @@ _ARCH_FUEL = {
     "wood_pellets": "biomass",
     "gas_cc": "gas",
     "coal": "coal",
+    # 背壓式(2026-08-11 起支援)。垃圾的燃料價是**負的**,見 assumptions。
+    "waste": "waste",
+    "waste_medium": "waste",
+    "straw": "biomass",
 }
 
 
@@ -132,7 +147,8 @@ def dea_plant(arch: str = "wood_chips", est: str = "ctrl", **over) -> Plant:
     """
     import dea  # 延後匯入:chp.py 不該因為缺 new_data/DEA_data 就 import 失敗
 
-    p = dea.plant_params(dea.CHP_ARCHETYPES[arch], est=est)
+    ws = {**dea.CHP_ARCHETYPES, **dea.BP_ARCHETYPES}[arch]
+    p = dea.plant_params(ws, est=est)
     p.pop("pb_max")  # 一律用 Plant 的可行性後備值,理由見 pb_max 的註解
     # 🔴 目錄沒有 ctrl 中央估計的欄位會是 None(2026-08-11 起,舊版偷填 lower/upper 中點)。
     #    **不沿用 Plant 的預設值**、也不自己編 —— 逼呼叫端明確給,因為這些幾乎都是容量,
@@ -140,7 +156,7 @@ def dea_plant(arch: str = "wood_chips", est: str = "ctrl", **over) -> Plant:
     missing = [k for k, v in p.items() if v is None and k not in over]
     if missing:
         raise dea.NoCentralEstimate(
-            f"原型 {arch!r}({dea.CHP_ARCHETYPES[arch]})的 {missing} 在目錄裡**沒有 ctrl "
+            f"原型 {arch!r}({ws})的 {missing} 在目錄裡**沒有 ctrl "
             f"中央估計**,只有 lower/upper。請明確傳入,例如 dea_plant({arch!r}, "
             f"{missing[0]}=...),並在呼叫端註明依據(真實機組容量 > 目錄區間端點 > 猜)。"
         )
@@ -288,7 +304,7 @@ def solve(
     for k, v in _cost_coeffs(pl, p, fp, fpb, cp, c_hp, tau, kappa, theta).items():
         c[sl[k]] = v
 
-    I = sp.eye(T, format="csr")
+    I = sp.eye(T, format="csr")  # noqa: E741 — 單位矩陣,數學慣例就叫 I
     Z = sp.csr_matrix((T, T))
 
     # 等式①熱平衡:Qc + Qe + Qh + Qpb + dis − ch = 熱需求
@@ -302,11 +318,23 @@ def solve(
     A_eq = sp.vstack([heat, stor], format="csr")
     b_eq = np.concatenate([d, b_stor])
 
-    # 不等式①背壓線:Cb·Qc − P ≤ 0     ②容量線:P + Cv·Qc ≤ P_max
-    bp = sp.hstack([-I, pl.cb * I, Z, Z, Z, Z, Z, Z], format="csr")
+    # 不等式①背壓線下界:Cb·Qc − P ≤ 0    ②容量線:P + Cv·Qc ≤ P_max
+    #           ③背壓線**上界**:P − Cb·Qc ≤ slack   ← 這一條決定機組是哪一種
+    #
+    # 🔑 **背壓式 vs 抽汽式在這裡是一個「界」不是一個 if**:
+    #   抽汽式  slack = p_max → ③ 恆成立(因為 P ≤ p_max 且 Cb·Qc ≥ 0)= 不綁,
+    #           剩下 ① 與 ②,可行域是一塊**面積**(P 可以高於背壓線,多餘蒸汽去凝汽發電)
+    #   背壓式  slack = 0     → ③ 變成 P ≤ Cb·Qc,與 ① 的 P ≥ Cb·Qc 夾成
+    #           **等式 P = Cb·Qc**,可行域退化成**一條線**,熱電完全綁死
+    # 這樣約束矩陣的**結構完全相同**,只有 b 向量的一個值不同 → 不必為機組類型分支。
+    # ⚠️ 背壓式還必須 `cv=0`:目錄的 Cv=1.0 是「此欄不適用」的哨兵值不是物理量,
+    #    照抄會讓容量線變成 P + Qc ≤ p_max(憑空多出一條不存在的限制)。dea 已處理。
+    bp_lo = sp.hstack([-I, pl.cb * I, Z, Z, Z, Z, Z, Z], format="csr")
     cap = sp.hstack([I, pl.cv * I, Z, Z, Z, Z, Z, Z], format="csr")
-    A_ub = sp.vstack([bp, cap], format="csr")
-    b_ub = np.concatenate([np.zeros(T), np.full(T, pl.p_max)])
+    bp_hi = sp.hstack([I, -pl.cb * I, Z, Z, Z, Z, Z, Z], format="csr")
+    slack = 0.0 if pl.back_pressure else pl.p_max
+    A_ub = sp.vstack([bp_lo, cap, bp_hi], format="csr")
+    b_ub = np.concatenate([np.zeros(T), np.full(T, pl.p_max), np.full(T, slack)])
 
     hi = {
         "P": pl.p_max,
@@ -390,6 +418,41 @@ def demo() -> None:
         f"  COP ok: −10°C {cold:.2f} < +10°C {mild:.2f}(冷天熱泵最不划算,而那時熱需求最高);"
         f"參考點 == 目錄 cop_ref {pl.cop_ref}"
     )
+
+    # ⑥a **背壓式**:熱電必須綁死成一條線,而且不能因此變得更好賺
+    bp = dea_plant("waste", p_max=70.0) if os.path.exists("new_data/DEA_data") else None
+    if bp is not None:
+        import assumptions as A
+
+        wfuel = A.waste_fuel_price_eur_mwh()  # 負值:收處理費燒垃圾
+        rb = solve(p, d, bp, fuel_price=wfuel, fuel_price_pb=30.0, co2_price=70.0)
+        # (i) P = Cb·Q 逐時成立(不只是 ≥)—— 這就是背壓式的定義
+        assert np.allclose(rb["P"], bp.cb * rb["Qc"], atol=1e-6), (
+            f"背壓式必須 P = Cb·Q,最大偏差 {np.abs(rb['P'] - bp.cb * rb['Qc']).max():.4f}"
+        )
+        # (ii) 熱電比恆定 → **零熱電彈性**:不管電價高低,想多發電只能多產熱
+        act = rb["Qc"] > 1e-6
+        ratio = rb["P"][act] / rb["Qc"][act]
+        assert ratio.std() < 1e-9, f"背壓式的功熱比應為常數,得 std={ratio.std():.2e}"
+        # (iii) **只**放寬背壓線上界(cv 保持 0,成本係數完全不變)→ 可行域是嚴格超集
+        #       → 淨收益不可能變差。這一條驗的是「背壓 = 少一個自由度」而不是別的副作用。
+        #       ⚠️ 不要同時改 cv:那會一起改動成本與容量線,就不是純粹的放寬了。
+        ext = solve(
+            p,
+            d,
+            dea_plant("waste", p_max=70.0, back_pressure=False),
+            fuel_price=wfuel,
+            fuel_price_pb=30.0,
+            co2_price=70.0,
+        )
+        assert ext["el_net"] >= rb["el_net"] - 1e-6, (
+            f"放寬成抽汽式後淨收益不該變差:背壓 {rb['el_net']:.0f} vs 抽汽 {ext['el_net']:.0f}"
+        )
+        print(
+            f"  背壓式 ok: P=Cb·Q 逐時成立、功熱比恆為 {ratio.mean():.3f}(零熱電彈性);"
+            f"放寬成抽汽式淨收益 €{rb['el_net']:,.0f} → €{ext['el_net']:,.0f}"
+            f"(+€{ext['el_net'] - rb['el_net']:,.0f} = 抽汽彈性的價值)"
+        )
 
     # ⑥b **重構等價性**:新的單一式子在「vom 全 0 + 三個佔位符全 0」時,必須逐項還原
     #     2026-08-11 之前那五行手寫的成本係數。這鎖住的是「合併成一條式子」沒有改到經濟學,
