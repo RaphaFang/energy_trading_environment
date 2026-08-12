@@ -124,6 +124,18 @@ def load_dk2(year_from: int = 2021) -> pd.DataFrame:
     assert d["price"].notna().all(), (
         f"有 {d['price'].isna().sum()} 小時沒有電價 —— 檢查兩份價格檔的銜接"
     )
+
+    # 🔴 **消費側量測中斷被記成 0,不是真的沒有熱需求**(2026-08-12 發現):
+    #    2024-04-01 08:00 → 04-02 22:00 連續 39 小時,`BE-EO-CTR-EFF` 與
+    #    `DAP-VEKS-FORBRUG-EFF` **同時恰好為 0**,而生產欄完全正常
+    #    (TOTAL 均 1,381 MW_th、熱電 917、垃圾 281)—— 熱網不可能在供暖季停擺兩天。
+    #    只佔 0.08%,但它會毀掉任何用到最小值/分位數的東西
+    #    (例:`chp.solve(committed=True)` 會因為「熱需求 0」而無解)。
+    # ⚠️ 清理**在分析層做,不動 parquet**(專案慣例:原始資料存 raw)。
+    bad = (d["dem"] <= 0) & (d["TOTAL"] > 0)
+    d["demand_outage"] = bad
+    if bad.any():
+        d = d[~bad].reset_index(drop=True)
     return d
 
 
@@ -224,7 +236,9 @@ def _fmt(df: pd.DataFrame) -> str:
     )
 
 
-def run_model(d: pd.DataFrame, kappa: float, fuel: str = "gas") -> dict:
+def run_model(
+    d: pd.DataFrame, kappa: float, fuel: str = "gas", committed: bool = False
+) -> dict:
     """把同一段真實 DK2 熱需求與電價餵進 `chp.solve()`,回傳逐時排程。
 
     🔴 **機組設定的三個誠實聲明**:
@@ -262,6 +276,7 @@ def run_model(d: pd.DataFrame, kappa: float, fuel: str = "gas") -> dict:
         co2_price=d["co2"].to_numpy(),
         cop=chp.cop_from_temp(d["tair"].to_numpy()),
         kappa=kappa,
+        committed=committed,
     )
 
 
@@ -441,6 +456,41 @@ def demo() -> None:
     assert abs(m.loc["LP 電鍋爐 Qe", "日總ρ價"]) > 2 * abs(
         r24.loc["實測 電鍋爐", "日總ρ價"]
     ), "預期 LP 的電鍋爐日總量對價格過度反應"
+    # ── ⑦ 最小負載補得了多少?(供熱季,機組持續併聯運轉才成立)────────────
+    hs = y[y["timestamp"].dt.month.isin([1, 2, 3, 4, 10, 11, 12])].reset_index(
+        drop=True
+    )
+    kap = A.p2h_tariff_eur_mwh_e()
+    free, comm = run_model(hs, kap, "gas"), run_model(hs, kap, "gas", committed=True)
+    rows = []
+    for lab, r in [("LP 自由", free), ("LP +最小負載", comm)]:
+        z = hs.copy()
+        z["Qpb"], z["Qe"] = r["Qpb"], r["Qe"]
+        rows.append(signature(z, {"Qpb": f"{lab} 尖峰", "Qe": f"{lab} 電鍋爐"}))
+    rows.append(
+        signature(
+            hs,
+            {"BE-VL-SPIDS-GAS-EF": "🔴 實測 尖峰氣", "BE-VL-EVO-EF": "🔴 實測 電鍋爐"},
+        )
+    )
+    print(f"\n  最小負載補得了多少?(2024 供熱季 {len(hs):,} 小時)")
+    print(_fmt(pd.concat(rows, ignore_index=True)))
+    g = pd.concat(rows, ignore_index=True).set_index("來源")
+    got = g.loc["LP +最小負載 尖峰", "日內ρ"] - g.loc["LP 自由 尖峰", "日內ρ"]
+    gap = g.loc["🔴 實測 尖峰氣", "日內ρ"] - g.loc["LP 自由 尖峰", "日內ρ"]
+    # 方向要對(不然就是加錯了),但**補不滿**——這一條鎖住「別再說最小負載是主因」
+    assert got > 0, f"最小負載應把尖峰鍋爐的日內 ρ 往正的推,實得 {got:+.3f}"
+    assert got < 0.3 * gap, (
+        f"若最小負載補了 30% 以上,§8.5 的結論要改寫:補了 {got:+.3f} / 缺口 {gap:+.3f}"
+    )
+    print(
+        f"  ⚠️ 最小負載只補了缺口的 **{got / gap:.0%}**({got:+.3f} / {gap:+.3f}),"
+        f"而且電鍋爐日總 ρ(價) {g.loc['LP 自由 電鍋爐', '日總ρ價']:+.3f} → "
+        f"{g.loc['LP +最小負載 電鍋爐', '日總ρ價']:+.3f}(**幾乎沒動**,實測 "
+        f"{g.loc['🔴 實測 電鍋爐', '日總ρ價']:+.3f})"
+        "\n     → 「缺最小負載是主因」這個推測**只對了一小部分**,不要再重複它。"
+    )
+
     print(
         f"\n  🔴 **結論**:年佔比對得上(尖峰鍋爐模型 vs 實測見上表),"
         f"但**日內時點的符號是反的** —— 實測尖峰氣 {r24.loc['實測 尖峰氣', '日內ρ']:+.3f}"
@@ -449,8 +499,11 @@ def demo() -> None:
         f"{r24.loc['實測 電鍋爐', '日總ρ價']:+.3f} vs LP {m.loc['LP 電鍋爐 Qe', '日總ρ價']:+.3f};"
         f"\n     實測的日總量主要由**熱需求**決定(ρ={r24.loc['實測 電鍋爐', '日總ρ需求']:+.3f}),"
         f"LP 幾乎只看價格(對需求 ρ={m.loc['LP 電鍋爐 Qe', '日總ρ需求']:+.3f})。"
-        "\n     → 指向 LP 缺**機組啟停/最小負載**約束(chp.py 第一版刻意不做),"
-        "不是燃料價或稅費的問題。"
+        "\n     ❌ **不是燃料價或稅費**:加 κ=25.3 只改水準(P2H 4.10%→2.43%),簽名不動。"
+        "\n     ❌ **也不主要是最小負載**:上面那組只補了 13% 的缺口(這是實測,不是推測)。"
+        "\n     🔴 **主因仍未確定。** 最明確的候選是**輔助服務市場**"
+        "(電鍋爐若靠調頻收入,調度就由啟動訊號而非現貨價決定)——"
+        "\n        ⚠️ 未查證。可測的資料集見 DATA.md §9b(已確認存在,批量抓取卡 rate limit)。"
     )
 
 

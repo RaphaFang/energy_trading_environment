@@ -80,6 +80,11 @@ class Plant:
     #    可量化的補償見 dea.availability()(木片 0.914 / 氣 CC 0.927 / 煤 0.950),
     #    但**本模型目前沒有套用它**。
     eta_el: float = 0.430
+    # [TC] 最小負載(佔滿載比例)。**預設不生效** —— 只有 `solve(committed=True)` 會用。
+    # 目錄值:垃圾 0.20 / 木片 0.45 / 顆粒 0.15 / 氣 CC 0.40 / 煤 0.15 / 秸稈 0.40。
+    # 🔴 為什麼是它而不是爬坡率:爬坡率換算到每小時全部 ≥1 倍滿載(見 dea.ramp_per_hour),
+    #    逐時 LP 加爬坡是白做的。最小負載才是「機組降不下來」的真正來源。
+    min_load: float = 0.45
     # 排放因子 tCO2/MWh_fuel,**熱電機組與尖峰鍋爐分開設**(2026-08-06 拆開)。
     # 原本共用一個 ef=0.20 → 對生質機組課了不存在的碳成本,系統性高估 CHP 成本、
     # 低估 CHP 競爭力,進而**高估 power-to-heat 的價值**。量級參考 heat/fuelmix.py:
@@ -244,6 +249,7 @@ def solve(
     tau: float = None,
     kappa: float = None,
     theta: float = None,
+    committed: bool = False,
 ):
     """解一段期間的最適排程。回傳 dict:各項出力陣列 + 利潤(€)。
 
@@ -255,6 +261,19 @@ def solve(
     tau/kappa/theta  電力稅、網路關稅、垃圾 CO2 稅;None → 用 assumptions.py 的佔位值(0)。
                      要測「網路關稅是不是 P2H 之謎的答案」就傳
                      `kappa=assumptions.p2h_tariff_eur_mwh_e()`。
+
+    committed    機組**持續併聯運轉**(供熱季的常態)→ 啟用最小負載下界。
+                 🔑 嚴格的最小負載是「不是關機,就是 ≥ min_load」= 需要整數變數。
+                 但**在機組不關機的前提下它是純線性的一條下界**,問題仍是 LP:
+
+                     P + Cv·Qc ≥ min_load · P_max        (與容量線同一個「負載」定義)
+
+                 為什麼要有它:`validate.py`(2026-08-12)量到 LP 在**每一個維度**
+                 都對價格過度反應(電鍋爐日總量 ρ 實測 −0.25 vs LP −0.79),
+                 而缺最小負載正是最可能的來源 —— 沒有下界的機組可以在便宜的小時
+                 完全讓位給電鍋爐,真實機組降不下來。
+                 ⚠️ **只在供熱季成立**:夏天機組會真的停機,強制下界會讓熱平衡無解
+                 (熱需求是等式,沒有棄熱)。`solve()` 會在無解時把這件事講清楚。
 
     蓄熱槽預設從空的開始(s_init=0)且不加期末條件:因為 S≥0 與動態式已保證
     「放出來的必定先充進去」,不會憑空生熱,所以不需要期末歸零(對照電池線的週窗歸零)。
@@ -333,8 +352,23 @@ def solve(
     cap = sp.hstack([I, pl.cv * I, Z, Z, Z, Z, Z, Z], format="csr")
     bp_hi = sp.hstack([I, -pl.cb * I, Z, Z, Z, Z, Z, Z], format="csr")
     slack = 0.0 if pl.back_pressure else pl.p_max
-    A_ub = sp.vstack([bp_lo, cap, bp_hi], format="csr")
-    b_ub = np.concatenate([np.zeros(T), np.full(T, pl.p_max), np.full(T, slack)])
+    blocks, rhs = (
+        [bp_lo, cap, bp_hi],
+        [
+            np.zeros(T),
+            np.full(T, pl.p_max),
+            np.full(T, slack),
+        ],
+    )
+    # ④ 最小負載下界(只有 committed=True):−(P + Cv·Qc) ≤ −min_load·P_max。
+    #    刻意用**容量線的同一個「負載」定義** P + Cv·Qc,而不是只綁 P ——
+    #    那樣抽汽機組只要多抽汽就能規避下界,等於沒綁。背壓式 Cv=0 時它自動退化成
+    #    P ≥ min_load·P_max,而 P = Cb·Qc 又把熱一起綁住 → **同一條式子,不分支**。
+    if committed:
+        blocks.append(sp.hstack([-I, -pl.cv * I, Z, Z, Z, Z, Z, Z], format="csr"))
+        rhs.append(np.full(T, -pl.min_load * pl.p_max))
+    A_ub = sp.vstack(blocks, format="csr")
+    b_ub = np.concatenate(rhs)
 
     hi = {
         "P": pl.p_max,
@@ -351,7 +385,15 @@ def solve(
     r = linprog(
         c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method="highs"
     )
-    assert r.status == 0, f"LP 失敗:{r.message}"
+    # 無解時最常見的原因是 committed=True 撞上夏天的低熱需求 → 明講,不要讓人猜
+    assert r.status == 0, f"LP 失敗:{r.message}" + (
+        f"\n  🔴 committed=True 時最小負載下界是 {pl.min_load:.2f}×{pl.p_max:.0f} = "
+        f"{pl.min_load * pl.p_max:.0f} MW_e,對應的熱出力可能已經超過這段期間的"
+        f"最低熱需求({d.min():.0f} MW_th)—— **夏天機組是真的會停機的**,"
+        "那時候這個線性近似不成立,請只在供熱季用 committed=True。"
+        if committed
+        else ""
+    )
     x = r.x
     out = {k: x[s] for k, s in sl.items()}
     out["p_buy"] = out["Qe"] / pl.eta_eb + out["Qh"] / c_hp  # power-to-heat 的買電量
@@ -452,6 +494,41 @@ def demo() -> None:
             f"  背壓式 ok: P=Cb·Q 逐時成立、功熱比恆為 {ratio.mean():.3f}(零熱電彈性);"
             f"放寬成抽汽式淨收益 €{rb['el_net']:,.0f} → €{ext['el_net']:,.0f}"
             f"(+€{ext['el_net'] - rb['el_net']:,.0f} = 抽汽彈性的價值)"
+        )
+
+    # ⑥c **最小負載**:committed=True 是**純粹收緊可行域**(只改一個旗標,別的都不動)
+    #     → 淨收益不可能變好,而且下界必須真的綁住(否則這個約束等於沒加)。
+    rc = solve(p, d, pl, committed=True)
+    load = rc["P"] + pl.cv * rc["Qc"]
+    floor = pl.min_load * pl.p_max
+    assert (load >= floor - 1e-6).all(), (
+        f"最小負載下界沒守住:最低負載 {load.min():.2f} < {floor:.2f} MW_e"
+    )
+    assert rc["el_net"] <= r["el_net"] + 1e-6, (
+        f"收緊可行域後淨收益不該變好:自由 {r['el_net']:.0f} vs 最小負載 {rc['el_net']:.0f}"
+    )
+    # 而且它要真的綁到 —— 若從沒觸底,這條約束在這個情境下是裝飾品
+    assert (load <= floor + 1e-3).any(), (
+        f"最小負載從未綁住(最低負載 {load.min():.2f} vs 下界 {floor:.2f})"
+        " —— 這個 self-check 就沒有在驗任何東西了"
+    )
+    print(
+        f"  最小負載 ok: 下界 {pl.min_load:.2f}×{pl.p_max:.0f}={floor:.0f} MW_e 逐時守住且"
+        f"有 {(load <= floor + 1e-3).mean():.0%} 的小時綁在底部;"
+        f"淨收益 €{r['el_net']:,.0f} → €{rc['el_net']:,.0f}(收緊可行域的代價)"
+    )
+    # 爬坡率在逐時解析度下不綁 —— 重新推導一次,免得日後有人白做一個爬坡約束
+    if os.path.exists("new_data/DEA_data"):
+        import dea
+
+        rp = {a: dea.ramp_per_hour(ws) for a, ws in dea.BP_ARCHETYPES.items()}
+        rp |= {a: dea.ramp_per_hour(ws) for a, ws in dea.CHP_ARCHETYPES.items()}
+        assert min(rp.values()) >= 1.0, (
+            f"若有原型的每小時爬坡 <1 倍滿載就要重新考慮:{rp}"
+        )
+        print(
+            f"  爬坡 ok: 每小時爬坡全部 ≥1 倍滿載({min(rp.values()):.1f}–{max(rp.values()):.1f})"
+            " → **逐時 LP 加爬坡約束是白做的**,真正綁的是最小負載"
         )
 
     # ⑥b **重構等價性**:新的單一式子在「vom 全 0 + 三個佔位符全 0」時,必須逐項還原

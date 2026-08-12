@@ -163,6 +163,35 @@ def availability(ws: str, year: int = YEAR, est: str = "ctrl") -> float:
     return (1.0 - forced) * (1.0 - planned / 52.0)
 
 
+def ramp_per_hour(ws: str, year: int = YEAR, est: str = "ctrl") -> float:
+    """爬坡率換算成**每小時佔滿載的比例**(目錄記的是每分鐘)。
+
+    🔴 **算出來才發現它在逐時解析度下根本不綁**,這個結論比數值本身重要:
+
+        木片/顆粒/煤/秸稈 0.04/分 × 60 = **2.4 倍滿載/小時**
+        垃圾              0.10/分 × 60 = **6.0**
+        氣 CC             0.15/分 × 60 = **9.0**
+
+    全部 ≥1 → 機組在一小時內可以從 0 衝到滿載再回來。**所以對逐時 LP 加爬坡約束
+    是白做的**(2026-08-12 驗過)。真正會綁的是最小負載,見 `min_load()`。
+    這個函式留著是為了讓「爬坡不是瓶頸」這件事可被重新推導,而不是寫在註解裡。
+    """
+    return get(ws, "Secondary regulation (of full load, per minute)", year, est) * 60.0
+
+
+def min_load(ws: str, year: int = YEAR, est: str = "ctrl") -> float:
+    """最小負載(佔滿載比例)—— **這個才是逐時 LP 真正缺的約束**。
+
+    目錄值(2020, ctrl):垃圾 0.20 / 木片 **0.45** / 顆粒 0.15 / 氣 CC 0.40 /
+    煤 0.15 / 秸稈 0.40。
+
+    ⚠️ 嚴格的最小負載要整數變數(「不是關機,就是 ≥ min_load」)。但**機組在供熱季
+    持續併聯運轉**時它退化成一條線性下界 —— 這正是 `chp.solve(committed=True)` 做的事,
+    見那裡的說明。夏天機組會真的停機,所以那個近似只在供熱季成立。
+    """
+    return get(ws, "Minimum load (of full load)", year, est)
+
+
 def plant_params(
     chp_ws: str,
     year: int = YEAR,
@@ -233,6 +262,8 @@ def plant_params(
         cv=0.0 if bp else g(chp_ws, "Cv coefficient"),
         back_pressure=bp,
         eta_el=eta_el(chp_ws),
+        # 最小負載:目錄真值。**只有 `solve(committed=True)` 會用它**,見 min_load()。
+        min_load=min_load(chp_ws, year, est),
         eb_max=opt(eb_ws, "Generating capacity for one unit [MW_h]"),
         eta_eb=g(eb_ws, "Heat efficiency (net, annual average)"),
         hp_max=opt(hp_ws, "Generating capacity for one unit [MW_h]"),
