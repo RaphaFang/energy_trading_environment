@@ -26,22 +26,22 @@
 
 ## 1. 主表:來源 → 腳本 → 檔案
 
-| #   | 來源(dataset)                               | 腳本                    | 輸出                          | 角色                        | Leak                 |
-| --- | ------------------------------------------- | ----------------------- | ----------------------------- | --------------------------- | -------------------- |
-| 1   | Energinet `Elspotprices`                    | `elspot_price.py`       | `new_data/price/`             | **目標 y**                  | —                    |
-| 2   | Open-Meteo `historical-forecast-api`        | `weather_forecast.py`   | `new_data/weather/`           | 天氣(溫度+殘差校正)         | leak-free            |
-| 3   | Energinet `Forecasts_Hour`                  | `energinet_forecast.py` | `new_data/forecast/`          | **DK 風光出力(主力)**       | 只 DayAhead 免 leak  |
-| 4   | Energinet `ProductionConsumptionSettlement` | `residual_demand.py`    | `new_data/residual_*.parquet` | 負載/residual(**只當 lag**) | 實測 → 同時刻會 leak |
-| 5   | 計算(無 API)                                | `calendar_features.py`  | `new_data/calendar/`          | Tier-1 特徵 + **spine**     | 決定性,零 leak       |
-| 6   | ENTSO-E Transparency                        | `entsoe_features.py`    | `new_data/entsoe/`            | **Tier-2 鄰居+DK負載**      | 全 day-ahead         |
-| 7   | yfinance(TTF/API2/FX)+ ICAP(EUA)            | `fuel_prices.py`        | `new_data/fuel/`              | **Tier-3 燃料與碳**         | 用 ≤D-2 收盤         |
-| 8   | Energinet `ElectricityBalanceNonv`          | `production_by_fuel.py` | `new_data/production/`        | 分燃料逐時出力(熱側驗證)    | 實測,僅供驗證        |
-| 9   | varmelast.dk `/api/v1/heatdata`             | `varmelast_heat.py`     | `new_data/heat/`              | **DK2 實際逐時熱需求**      | 實測,僅供校準        |
-| 10  | 丹麥能源署 Technology Catalogue             | (手動下載)              | `new_data/DEA_data/`          | **機組技術參數**            | 非時序               |
-| 11  | Energinet `DayAheadPrices`(15 分)          | `elspot_price.py`       | `new_data/price/price15_*`    | **電價 2025-10 之後**       | —                    |
-| 12  | 丹麥能源署 **SØB25** + 稅費費率             | `build_external_params.py` | `new_data/soeb25_&_extra_params/` | **燃料價/排放/稅費/物價指數** | 非時序 |
-| 13  | varmelast `/api/v1/heatdata/dictionary`     | (快照)                  | `new_data/heat/varmelast_dictionary.json` | **官方欄位定義存證** | 非時序 |
-| —   | 合併                                        | `load_duckdb.py`        | `new_data/energy.duckdb`      | → `training` view           | —                    |
+| #   | 來源(dataset)                               | 腳本                       | 輸出                                      | 角色                          | Leak                 |
+| --- | ------------------------------------------- | -------------------------- | ----------------------------------------- | ----------------------------- | -------------------- |
+| 1   | Energinet `Elspotprices`                    | `elspot_price.py`          | `new_data/price/`                         | **目標 y**                    | —                    |
+| 2   | Open-Meteo `historical-forecast-api`        | `weather_forecast.py`      | `new_data/weather/`                       | 天氣(溫度+殘差校正)           | leak-free            |
+| 3   | Energinet `Forecasts_Hour`                  | `energinet_forecast.py`    | `new_data/forecast/`                      | **DK 風光出力(主力)**         | 只 DayAhead 免 leak  |
+| 4   | Energinet `ProductionConsumptionSettlement` | `residual_demand.py`       | `new_data/residual_*.parquet`             | 負載/residual(**只當 lag**)   | 實測 → 同時刻會 leak |
+| 5   | 計算(無 API)                                | `calendar_features.py`     | `new_data/calendar/`                      | Tier-1 特徵 + **spine**       | 決定性,零 leak       |
+| 6   | ENTSO-E Transparency                        | `entsoe_features.py`       | `new_data/entsoe/`                        | **Tier-2 鄰居+DK負載**        | 全 day-ahead         |
+| 7   | yfinance(TTF/API2/FX)+ ICAP(EUA)            | `fuel_prices.py`           | `new_data/fuel/`                          | **Tier-3 燃料與碳**           | 用 ≤D-2 收盤         |
+| 8   | Energinet `ElectricityBalanceNonv`          | `production_by_fuel.py`    | `new_data/production/`                    | 分燃料逐時出力(熱側驗證)      | 實測,僅供驗證        |
+| 9   | varmelast.dk `/api/v1/heatdata`             | `varmelast_heat.py`        | `new_data/heat/`                          | **DK2 實際逐時熱需求**        | 實測,僅供校準        |
+| 10  | 丹麥能源署 Technology Catalogue             | (手動下載)                 | `new_data/DEA_data/`                      | **機組技術參數**              | 非時序               |
+| 11  | Energinet `DayAheadPrices`(15 分)           | `elspot_price.py`          | `new_data/price/price15_*`                | **電價 2025-10 之後**         | —                    |
+| 12  | 丹麥能源署 **SØB25** + 稅費費率             | `build_external_params.py` | `new_data/soeb25_&_extra_params/`         | **燃料價/排放/稅費/物價指數** | 非時序               |
+| 13  | varmelast `/api/v1/heatdata/dictionary`     | (快照)                     | `new_data/heat/varmelast_dictionary.json` | **官方欄位定義存證**          | 非時序               |
+| —   | 合併                                        | `load_duckdb.py`           | `new_data/energy.duckdb`                  | → `training` view             | —                    |
 
 ⚠️ `new_data/` 全部 gitignored,不進 repo。**所有指令從專案根目錄跑**(路徑是相對的)。
 
@@ -220,25 +220,25 @@ EUR/MWh_fuel = (USD/公噸) ÷ (當日 USD per EUR) ÷ 6.978 MWh/公噸
 
 **拆成三個檔而不是一個**,因為三者「來源」性質不同,硬合併會產生大量空欄位。
 
-| 檔 | 列數 | 內容 |
-| -- | ---- | ---- |
-| `soeb25_params.csv` | 280(20 個 param) | 全部同一出處 → 來源寫在腳本頂端常數,列裡放 `source_table`+`source_cell` 可逐格覆核 |
-| `dk_tax_and_tariff_params.csv` | 4 | **每列出處都不同** → 來源欄逐列保留 |
-| `gaps.csv` | 6 | **缺的東西沒有值** → 欄位是 `what_is_missing`/`where_to_look`/**`do_not_use`**/`blocks` |
+| 檔                             | 列數             | 內容                                                                                    |
+| ------------------------------ | ---------------- | --------------------------------------------------------------------------------------- |
+| `soeb25_params.csv`            | 280(20 個 param) | 全部同一出處 → 來源寫在腳本頂端常數,列裡放 `source_table`+`source_cell` 可逐格覆核      |
+| `dk_tax_and_tariff_params.csv` | 4                | **每列出處都不同** → 來源欄逐列保留                                                     |
+| `gaps.csv`                     | 6                | **缺的東西沒有值** → 欄位是 `what_is_missing`/`where_to_look`/**`do_not_use`**/`blocks` |
 
-出處:Energistyrelsen, *Samfundsøkonomiske beregningsforudsætninger 2025* (soeB25),
+出處:Energistyrelsen, _Samfundsøkonomiske beregningsforudsætninger 2025_ (soeB25),
 webudgave marts 2026。https://ens.dk/analyser-og-statistik/samfundsoekonomiske-analysemetoder
 
 **🔑 用得到的關鍵值**
 
-| 參數 | 值 | 出處 |
-| ---- | -- | ---- |
-| `el_transport_margin_over_70000MWh` | **189**(2025)/ **167**(2026)DKK2025/MWh_e | Tabel 10 H4/H5 |
-| `heating_value_affald` | **11.70 GJ/ton** | Tabel 1 B18 |
-| `ef_co2_ledningsgas` | **57.1 kg CO2/GJ**,適用 **2025–2031**(2032 起 soeB 改 0,邊際沼氣邏輯) | Tabel 12 |
-| `price_index_2025base` | 2019 **0.8526** / 2020 0.8559 / 2021 0.8687 / 2022 **0.9349** / 2023 0.9730 / 2024 0.9818 / 2025 1.0000 | Tabel 1 |
-| `elafgift_dh_producer_net` | **0.4 øre/kWh**(2021 年起) | ELAL §11 stk.1 與 §11c;法源 2020-12-29 第 2225 號法 |
-| `gate_fee_arc_rest_erhverv` | **635 DKK/ton**(未稅) | ARC 費率表 2025-11-01 |
+| 參數                                | 值                                                                                                      | 出處                                                |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `el_transport_margin_over_70000MWh` | **189**(2025)/ **167**(2026)DKK2025/MWh_e                                                               | Tabel 10 H4/H5                                      |
+| `heating_value_affald`              | **11.70 GJ/ton**                                                                                        | Tabel 1 B18                                         |
+| `ef_co2_ledningsgas`                | **57.1 kg CO2/GJ**,適用 **2025–2031**(2032 起 soeB 改 0,邊際沼氣邏輯)                                   | Tabel 12                                            |
+| `price_index_2025base`              | 2019 **0.8526** / 2020 0.8559 / 2021 0.8687 / 2022 **0.9349** / 2023 0.9730 / 2024 0.9818 / 2025 1.0000 | Tabel 1                                             |
+| `elafgift_dh_producer_net`          | **0.4 øre/kWh**(2021 年起)                                                                              | ELAL §11 stk.1 與 §11c;法源 2020-12-29 第 2225 號法 |
+| `gate_fee_arc_rest_erhverv`         | **635 DKK/ton**(未稅)                                                                                   | ARC 費率表 2025-11-01                               |
 
 ⚠️ `price_index_2025base` 是把不同年份版本的 soeB 放到同一價格基準的必要工具。
 
@@ -254,6 +254,7 @@ webudgave marts 2026。https://ens.dk/analyser-og-statistik/samfundsoekonomiske-
 (例:拿 ARC 的費率當 Vestforbrænding 用、拿現在的 elafgift 套 2019 年)。
 
 **兩個容易撿錯的陷阱**:
+
 1. **elafgift**:法規明文說熱生產者**不能**用家戶的 elvarme 減免稅率。
    網路上「1 øre/kWh、4,000 kWh 門檻」那組數字全是家戶的,**不適用**。
 2. **ARC 處理費**:該費率**已內含 ARC 自身應繳的垃圾稅費**。
@@ -320,6 +321,23 @@ daglige prognose for varmebehov` → **varmebehov = 熱網公司的需求預測;
 ⚠️ `fill_gaps()` 只新增舊檔沒有的時間戳,寫入前驗證舊資料逐格不變,先寫 .tmp 再 rename。
 ⚠️ 官方公告 2026-07-10~29 的歷史資料有誤(`heat/calibrate.py` 讀取時已排除)。
 ⚠️ 這是 **DK2**,不是 DK1 → 當校準/驗證用。**DK1 沒有任何逐時熱需求資料**。
+
+🔑 **生產分項欄的正確用法(2026-08-12,`heat/validate.py`)**:它們**不能當 LP 輸入**,
+但可以驗 LP 的**排程時點**,而且比驗水準有識別力得多。三件事要注意:
+
+1. **一律先加日固定效果。** 原始資料上熱電「高價時出力更高」(高價四分位 +42 MW),
+   加日 FE 後係數翻成 −0.125 —— 那是冬天同時有高需求與高價的**季節性假象**。
+2. **再移除「月×時」平均日內形狀。** 電價與各熱源各有穩定日內形狀,直接相關等於在比
+   兩條固定曲線對不對齊。移除後垃圾焚化從 −0.190 衰減到 −0.100(大半是形狀假象),
+   電鍋爐 −0.409 → −0.261(是真的反應)。
+3. **日總量與日內配置要分開問。** 實測電鍋爐的日總量主要由**熱需求**決定(ρ=+0.42),
+   電價只決定**在哪幾小時開**(ρ=−0.25)。混在一起看會得到錯的結論。
+
+🔑 **P2H 裝置容量:銘牌查不到,但出力上界給了下界**(這兩欄只有出力沒有銘牌):
+**`BE-VL-EVO-EF`(電鍋爐)最大 98.0 MW_th、`BE-VL-VP-EF`(熱泵)最大 25.9 MW_th**
+(2021–2026 全期)。出力達到過的值,容量至少有那麼大 —— **這不是猜,是下界**。
+⚠️ 熱泵有**容量擴建**:2021–2022 最大恆為 6.0 MW 且開機率 100%(單一機組跑滿),
+2024 起上界升到 24–26 MW → 跨年比較熱泵時要注意這個結構斷點。
 
 ### 10. 丹麥能源署 Technology Catalogue
 
