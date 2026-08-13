@@ -42,6 +42,12 @@ KAPPA_NET = 0.0
    之所以仍設 0,是因為**尚未決定它在模型裡的適用邊界**(哪些機組落在
    >70,000 MWh 級距、電鍋爐與熱泵是否同級距、是否含在 SØB 的其他項裡)。
    要測 P2H 假設就把它設成真值重跑 —— 見模組末的 `p2h_tariff_eur_mwh_e()`。
+
+🔑 **這個 189 幾乎確定是上界,不是 DH 廠實付**(2026-08-13):大型 DH 電鍋爐接在
+**高壓層**、透過自己的平衡責任方買電,不走配電網也沒有零售加成。
+所以**反推值若真的收斂到 25.3 才該起疑** —— 那等於在說 DH 廠付的是配電級費率。
+⚠️ 參數名 `over_70000MWh` 指的是**年用電 >70,000 MWh 的大用戶級距**(已對 CSV 確認),
+   不是家戶均值;但 **Tabel 10 本身沒看過**,無法排除該級距仍內含配電成分。
 """
 
 THETA_WASTE = 0.0
@@ -107,6 +113,46 @@ def p2h_tariff_eur_mwh_e(dkk_per_mwh_e: float = 189.0) -> float:
     return dkk_per_mwh_e / DKK_PER_EUR
 
 
+SOEB25_CSV = "new_data/soeb25_&_extra_params/soeb25_params.csv"
+
+BIOMASS_PARAMS = {
+    "wood_chips": "fuel_price_traeflis_an_kraftvaerk",
+    "wood_pellets": "fuel_price_traepiller_industri_an_kraftvaerk",
+    "straw": "fuel_price_halm_an_kraftvaerk",
+}
+"""生質燃料價的 SØB25 參數名。**`an kraftvaerk` = 中央熱電廠**(對的那個),
+`an vaerk` 是分散式/純熱廠 —— DK2 的 Amager/Avedøre 是中央熱電廠,不要拿錯。"""
+
+
+def biomass_fuel_price_eur_mwh(year: int, kind: str = "wood_chips") -> float:
+    """SØB25 的生質燃料價 [EUR/MWh_fuel]。**2025 以前直接拋錯,不回填。**
+
+    🔴 **這個函式不解除生質價的阻塞**,只是讓 2025–2026 跑得動:
+      ① **2021–2024 完全沒有** —— SØB25 的表從 2025 開始。這仍是主要窗口的阻塞。
+      ② **連 2025 那格都不是結算價**,是「2025 年 1 月的遠期觀點」(Tabel 5 Note 3)。
+      ③ 2022 能源危機時生質價暴漲,而那正是最值得研究策略行為的一年 ——
+         **絕對不可以拿 2025 的價格鋪滿更早年份**(`gaps.csv` 的 `do_not_use` 明講)。
+
+    刻意拋 `KeyError` 而不是回最近年份:預設值造成的災難見 [[no-fabrication-rule]]
+    (`dea.get()` 舊版補的 gas_cc 中點讓成本正負號翻轉)。
+
+    換算:DKK2025/GJ × 3.6 GJ/MWh ÷ 7.46 DKK/EUR。
+    ⚠️ **faktorpris,不含稅費補貼與 VAT**(CSV 的 note 欄)。
+    """
+    import pandas as pd
+
+    t = pd.read_csv(SOEB25_CSV)
+    s = t[(t["param"] == BIOMASS_PARAMS[kind]) & (t["year"] == year)]
+    if not len(s):
+        yrs = sorted(t.loc[t["param"] == BIOMASS_PARAMS[kind], "year"].dropna())
+        raise KeyError(
+            f"SØB25 沒有 {kind} 在 {year} 年的燃料價(只有 {yrs[0]:.0f}–{yrs[-1]:.0f})。"
+            "**不要拿別的年份代打** —— 2022 能源危機時生質價暴漲,用 2025 的值會把"
+            "最值得研究的那一年抹平。見 gaps.csv 的 biomass_price_2019_2024。"
+        )
+    return float(s["value"].iloc[0]) * 3.6 / DKK_PER_EUR
+
+
 _warned = False
 
 
@@ -156,6 +202,24 @@ def demo() -> None:
         f"  網路關稅 ok: 189 DKK/MWh_e = EUR {t:.1f}/MWh_e"
         f"(除以 COP 2.8 → 對熱 EUR {t / 2.8:.1f}/MWh_th)"
     )
+    # 生質價:2025 起有、2025 以前**必須拋錯**(這一條鎖住「不准回填」)
+    import os
+
+    if os.path.exists(SOEB25_CSV):
+        b = biomass_fuel_price_eur_mwh(2025)
+        assert 20 < b < 60, f"木片價量級不對:{b:.1f} EUR/MWh_fuel"
+        for bad in (2022, 2024):
+            try:
+                biomass_fuel_price_eur_mwh(bad)
+                raise AssertionError(f"{bad} 年不該有生質價,卻回了值 —— 有人偷偷回填了")
+            except KeyError:
+                pass
+        print(
+            f"  生質價 ok: 木片 2025 €{b:.1f}/MWh_fuel(SØB25 Tabel 2,faktorpris);"
+            f"顆粒 €{biomass_fuel_price_eur_mwh(2025, 'wood_pellets'):.1f}、"
+            f"秸稈 €{biomass_fuel_price_eur_mwh(2025, 'straw'):.1f}"
+            "\n     🔴 **2021–2024 仍然沒有,阻塞未解**;2025 那格也只是遠期觀點不是結算價"
+        )
     print(f"  佔位符 {len(PLACEHOLDERS)} 個:{', '.join(PLACEHOLDERS)}")
 
 

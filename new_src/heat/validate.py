@@ -237,7 +237,12 @@ def _fmt(df: pd.DataFrame) -> str:
 
 
 def run_model(
-    d: pd.DataFrame, kappa: float, fuel: str = "gas", committed: bool = False
+    d: pd.DataFrame,
+    kappa: float,
+    fuel: str = "gas",
+    committed: bool = False,
+    pb_max: float = None,
+    fuel_price: float = None,
 ) -> dict:
     """把同一段真實 DK2 熱需求與電價餵進 `chp.solve()`,回傳逐時排程。
 
@@ -257,6 +262,7 @@ def run_model(
     cb = chp.dea_plant("waste", p_max=1.0).cb
     smax = sum(v["mwh"] for v in F.STORAGE.values())  # 三座蓄熱槽真值
     srate = sum(v["mw"] for v in F.STORAGE.values())
+    over = {} if pb_max is None else dict(pb_max=pb_max)
     pl = chp.dea_plant(
         "waste",
         p_max=cb * qmax,  # 背壓式:P_max = Cb·Q_max(derived_mw_e 的同一條式子)
@@ -264,9 +270,15 @@ def run_model(
         hp_max=HP_OBSERVED_MAX,
         s_max=smax,
         s_rate=srate,
+        **over,
     )
     gas = d["gas"].to_numpy()
-    fp = gas if fuel == "gas" else A.waste_fuel_price_eur_mwh()
+    # `fuel_price` 明確傳純量時優先(燃料價掃描用),否則走 fuel 的兩端
+    fp = (
+        fuel_price
+        if fuel_price is not None
+        else (gas if fuel == "gas" else A.waste_fuel_price_eur_mwh())
+    )
     return chp.solve(
         d["price"].to_numpy(),
         d["dem"].to_numpy(),
@@ -392,11 +404,17 @@ def demo() -> None:
         return
     print(f"\n=== 模型對照:同一段真實 DK2 資料({len(y):,} 小時,2024)===")
     tot = y["dem"].sum()
+    # 🔴 **分母必須與 LP 同源**(2026-08-13 修):LP 的佔比分母是熱需求(= CTR+VEKS 消費),
+    #    所以實測也要用消費當分母。先前用「生產分項加總」當分母 —— 生產比消費多 2.44%
+    #    (蓄熱 + 網損),兩邊分母不同源時「對得很好」就是巧合。
+    # ⚠️ 另一個混在一起的錯:LP 的 `Qpb` 是**單一尖峰鍋爐**,對應實測的**氣 + 油**;
+    #    而文件裡那個 4.0% 是**尖峰氣單獨**。兩個量不同,不要互相對照。
     heat_cols = [c for c in y.columns if c.startswith("BE-VL-") and c.endswith("-EF")]
-    real_tot = y[heat_cols].sum().sum()
     real = dict(
-        p2h=(y["BE-VL-EVO-EF"].sum() + y["BE-VL-VP-EF"].sum()) / real_tot,
-        pb=(y["BE-VL-SPIDS-GAS-EF"].sum() + y["BE-VL-SPIDS-OLIE-EF"].sum()) / real_tot,
+        p2h=(y["BE-VL-EVO-EF"].sum() + y["BE-VL-VP-EF"].sum()) / tot,
+        pb=(y["BE-VL-SPIDS-GAS-EF"].sum() + y["BE-VL-SPIDS-OLIE-EF"].sum()) / tot,
+        pb_gas=y["BE-VL-SPIDS-GAS-EF"].sum() / tot,
+        prod_over_dem=y[heat_cols].sum().sum() / tot,
     )
 
     out = []
@@ -411,19 +429,24 @@ def demo() -> None:
             )
     print(
         f"  {'🔴 DK2 實測':25} P2H 佔熱 {real['p2h']:6.2%}  尖峰鍋爐 {real['pb']:6.2%}"
+        f"(氣+油;氣單獨 {real['pb_gas']:.2%})"
+    )
+    print(
+        "     ⚠️ 分母一律用熱需求(CTR+VEKS 消費),與 LP 同源;"
+        f"改用生產分項加總會多算 {real['prod_over_dem'] - 1:.2%}(蓄熱+網損)"
     )
 
-    # 燃料價的兩端把 P2H 佔比夾在一個很寬的區間 → 生質價缺會直接擋住這個驗證
-    p2h = [
-        (r["Qe"].sum() + r["Qh"].sum()) / tot for lab, r in out if "TTF" in lab or True
-    ]
+    # 燃料價兩端把**佔比**(水準)拉開一個數量級以上 → 生質價缺擋住的是水準比對。
+    # ⚠️ 這**不能**推論到時點:燃料價決定 merit order、merit order 決定誰在邊際上,
+    #    而那正是 ρ 在量的東西。時點免不免疫要另外測 —— 見 ⑥b 的掃描。
+    p2h = [(r["Qe"].sum() + r["Qh"].sum()) / tot for _, r in out]
     assert max(p2h) > 10 * max(min(p2h), 1e-6), (
         "預期燃料價兩端會把 P2H 佔比拉開一個數量級以上(這正是生質價缺的代價)"
     )
     print(
         f"  ⚠️ 燃料價兩端把 P2H 佔比從 {min(p2h):.2%} 拉到 {max(p2h):.2%}"
-        f"(**{max(p2h) / max(min(p2h), 1e-9):.0f}×**)→ **生質燃料價缺也擋住這個驗證**,"
-        "不只是擋住成本水準"
+        f"(**{max(p2h) / max(min(p2h), 1e-9):.0f}×**)→ **水準比對在生質價到手前不可引用**。"
+        "\n     (時點是否也被擋住是另一個問題,不能由這裡推論 —— 見下面的燃料價掃描。)"
     )
 
     # ── ⑥ 🔴 核心結果:年佔比對得上,時點卻是反的 ─────────────────────────
@@ -456,6 +479,75 @@ def demo() -> None:
     assert abs(m.loc["LP 電鍋爐 Qe", "日總ρ價"]) > 2 * abs(
         r24.loc["實測 電鍋爐", "日總ρ價"]
     ), "預期 LP 的電鍋爐日總量對價格過度反應"
+    # ── ⑥b 🔑 **時點結論對燃料價免疫嗎?**(2026-08-13 補,審閱意見)──────────
+    #    §8.3 用「水準對燃料價超敏感(654×)」證明水準不可引用,但那不代表**時點**
+    #    也免疫 —— 燃料價決定 merit order,merit order 決定誰在邊際上,那正是 ρ 在量的。
+    #    🔴 **不能用「垃圾處理費 vs 氣價」當兩端**:低端 CHP 太便宜,尖峰鍋爐全年只有
+    #       6 天有出力、電鍋爐 2 天 → ρ 是用 2–6 天算的,不是估計值。改成掃描。
+    print("\n  時點結論對燃料價免疫嗎?(掃 CHP 燃料價,看符號在哪裡才翻)")
+    print(
+        f"    {'燃料價':>8} {'尖峰ρ':>8}{'(天)':>6} {'電鍋爐ρ':>9}{'(天)':>6} {'尖峰%':>7}{'P2H%':>7}"
+    )
+    sweep = []
+    for fp in (0.0, 10.0, 20.0, 30.0, 40.0, 60.0, 80.0):
+        r = run_model(y, A.p2h_tariff_eur_mwh_e(), fuel_price=fp)
+        z = y.copy()
+        z["Qpb"], z["Qe"] = r["Qpb"], r["Qe"]
+        a, e = intraday_rho(z, "Qpb"), intraday_rho(z, "Qe")
+        sh = r["Qpb"].sum() / tot
+        sweep.append((fp, a["rho"], sh))
+        print(
+            f"    {fp:8.1f} {a['rho']:8.3f}{a['days']:6d} {e['rho']:9.3f}{e['days']:6d}"
+            f" {sh:7.2%}{(r['Qe'].sum() + r['Qh'].sum()) / tot:7.2%}"
+        )
+    # 只在尖峰鍋爐**還是尖峰機**的區間內解讀:佔比一旦衝到 80%+,它就是基載了,
+    # 那時 ρ 轉正不是「模型變對」而是「這個診斷失去意義」。
+    peaker = [(f, r_, s) for f, r_, s in sweep if s < 0.5]
+    assert all(r_ < 0 for _, r_, _ in peaker), (
+        f"尖峰鍋爐仍是尖峰機(佔比<50%)的區間內,日內 ρ 應一律為負:{peaker}"
+    )
+    bio = None
+    try:
+        bio = A.biomass_fuel_price_eur_mwh(2025)
+    except (KeyError, FileNotFoundError):
+        pass
+    print(
+        f"    ✅ 尖峰鍋爐佔比 <50% 的整個區間內,日內 ρ **一律為負**"
+        f"({min(r_ for _, r_, _ in peaker):.3f} ~ {max(r_ for _, r_, _ in peaker):.3f})。"
+        f"\n       ρ 只在燃料價 80(佔比 {sweep[-1][2]:.0%})才轉正 —— 那時它已經是**基載不是尖峰機**,"
+        "診斷本身失去意義,不算符號翻轉。"
+        + (
+            f"\n       📌 錨點:SØB25 木片 2025 = **€{bio:.1f}/MWh_fuel**,落在穩定區間中央"
+            " → **時點結論不被生質價擋住**(水準仍然被擋)。"
+            if bio
+            else ""
+        )
+    )
+
+    # ── ⑥c 尖峰鍋爐「無上限懲罰項」是不是把 ρ 的符號做出來的?(審閱意見)─────
+    #    質疑很合理:無上限、無啟停成本的鍋爐在 LP 裡是**純價差套利工具**,
+    #    在任何 spread 划算的小時都會開,跟需求脫鉤;真實尖峰機是**容量驅動**的。
+    #    → 給它 varmelast 公布的真實尖峰容量,看 ρ 會不會回正。
+    import dk2_fleet as F
+
+    pb_real = F.PUBLISHED_TOTALS["peak_mw_th"]
+    free = run_model(y, A.p2h_tariff_eur_mwh_e())
+    capped = run_model(y, A.p2h_tariff_eur_mwh_e(), pb_max=pb_real)
+    zf, zc = y.copy(), y.copy()
+    zf["Qpb"], zc["Qpb"] = free["Qpb"], capped["Qpb"]
+    rf, rcp = intraday_rho(zf, "Qpb")["rho"], intraday_rho(zc, "Qpb")["rho"]
+    bind = (free["Qpb"] > pb_real).sum()
+    assert rcp < 0, "給真實容量後尖峰鍋爐 ρ 仍應為負(若回正,§8.3 要改寫)"
+    print(
+        f"\n  尖峰鍋爐給真實容量({pb_real:.0f} MW_th,varmelast 公布)後:"
+        f"日內 ρ {rf:+.3f} → {rcp:+.3f}(**幾乎不動**)"
+        f"\n     上限在 {bind} 小時({bind / len(y):.1%})綁到 → 檢定有 power 但很弱。"
+        "\n     🔴 **真正該測的是啟動成本**(那才是「尖峰機 vs 套利工具」的分野),"
+        "但目錄的 `44 Natural Gas DH Only` **沒有 Startup cost 欄**"
+        "\n        (只有 min load 0.15 與啟動時間)→ **這個 confound 目前無法排除**,"
+        "而且加啟停要整數變數。見 STATUS.md §8.6。"
+    )
+
     # ── ⑦ 最小負載補得了多少?(供熱季,機組持續併聯運轉才成立)────────────
     hs = y[y["timestamp"].dt.month.isin([1, 2, 3, 4, 10, 11, 12])].reset_index(
         drop=True
