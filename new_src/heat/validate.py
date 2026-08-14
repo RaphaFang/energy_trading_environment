@@ -280,6 +280,13 @@ def run_model(
         if fuel_price is not None
         else (gas if fuel == "gas" else A.waste_fuel_price_eur_mwh())
     )
+    # 🔴 **θ_h 必須跟著燃料走,不能吃預設值**(2026-08-15):
+    #    `fuel="waste"` 這組是真的垃圾廠 → 課 θ_h;
+    #    `fuel="gas"` 那組是拿垃圾原型的**技術參數**當「一般 CHP」的代理,
+    #    它代表的是 DK2 那 64.6% 的**生質**機組,而生質**不繳垃圾熱側稅**。
+    #    若讓它吃 θ_h 的預設值,尖峰鍋爐佔比會從 5.95% 暴衝到 71.65%(實測 5.21%)——
+    #    那是把一筆不存在的稅課在代理上,不是模型發現了什麼。
+    theta_h = A.THETA_HEAT_WASTE if fuel == "waste" and fuel_price is None else 0.0
     return chp.solve(
         d["price"].to_numpy(),
         d["dem"].to_numpy(),
@@ -291,6 +298,7 @@ def run_model(
         kappa=kappa,
         committed=committed,
         theta_f=theta_f,
+        theta_h=theta_h,
     )
 
 
@@ -509,7 +517,7 @@ def demo() -> None:
 
     out = []
     for fuel, lab in [("waste", "垃圾處理費(負)"), ("gas", "真實 TTF 氣價")]:
-        for kappa, klab in [(0.0, "κ=0"), (A.p2h_tariff_eur_mwh_e(), "κ=25.3")]:
+        for kappa, klab in [(0.0, "κ=0"), (A.KAPPA_NET, f"κ={A.KAPPA_NET:.2f}")]:
             r = run_model(y, kappa, fuel)
             out.append((f"{lab} {klab}", r))
             print(
@@ -542,7 +550,7 @@ def demo() -> None:
     # ── ⑥ 🔴 核心結果:年佔比對得上,時點卻是反的 ─────────────────────────
     mdl = None
     for lab, r in out:
-        if "TTF" in lab and "25.3" in lab:
+        if "TTF" in lab and "κ=0" not in lab:
             z = y.copy()
             z["Qe"], z["Qh"], z["Qpb"], z["Qc"] = r["Qe"], r["Qh"], r["Qpb"], r["Qc"]
             mdl = signature(
@@ -556,7 +564,7 @@ def demo() -> None:
             "BE-VL-EVO-EF": "實測 電鍋爐",
         },
     )
-    print("\n  行為簽名 — 實測 vs LP(真實氣價 + κ=25.3):")
+    print(f"\n  行為簽名 — 實測 vs LP(真實氣價 + κ={A.KAPPA_NET:.2f} 真值):")
     print(_fmt(pd.concat([emp24, mdl], ignore_index=True)))
 
     m = mdl.set_index("來源")
@@ -580,7 +588,7 @@ def demo() -> None:
     )
     sweep = []
     for fp in (0.0, 10.0, 20.0, 30.0, 40.0, 60.0, 80.0):
-        r = run_model(y, A.p2h_tariff_eur_mwh_e(), fuel_price=fp)
+        r = run_model(y, A.KAPPA_NET, fuel_price=fp)
         z = y.copy()
         z["Qpb"], z["Qe"] = r["Qpb"], r["Qe"]
         a, e = intraday_rho(z, "Qpb"), intraday_rho(z, "Qe")
@@ -621,8 +629,8 @@ def demo() -> None:
     import dk2_fleet as F
 
     pb_real = F.PUBLISHED_TOTALS["peak_mw_th"]
-    free = run_model(y, A.p2h_tariff_eur_mwh_e())
-    capped = run_model(y, A.p2h_tariff_eur_mwh_e(), pb_max=pb_real)
+    free = run_model(y, A.KAPPA_NET)
+    capped = run_model(y, A.KAPPA_NET, pb_max=pb_real)
     zf, zc = y.copy(), y.copy()
     zf["Qpb"], zc["Qpb"] = free["Qpb"], capped["Qpb"]
     rf, rcp = intraday_rho(zf, "Qpb")["rho"], intraday_rho(zc, "Qpb")["rho"]
@@ -638,25 +646,44 @@ def demo() -> None:
         "而且加啟停要整數變數。見 STATUS.md §8.6。"
     )
 
-    # ── ⑥d θ 拆分後的兩個閾值掃描(2026-08-14)────────────────────────────
-    kap = A.p2h_tariff_eur_mwh_e()
-    th = theta_h_threshold(y, kappa=0.0)
-    print("\n  測試 2 — θ_h 要多大,垃圾機組才不再永遠全開?(ARC/ARGO,關蓄熱槽)")
+    # ── ⑥d θ_h:窗口區間有沒有跨過「垃圾機組不再全開」的門檻?──────────────
+    #    🔑 2026-08-15 起 θ_h 有公布值,所以問題從「門檻在哪」變成
+    #       「已知的區間有沒有跨過門檻」。**門檻必須用 κ 的真值算** ——
+    #       κ 讓 P2H 變貴 → 更難擠掉垃圾 → 門檻往上移(κ=0 時 30,κ=8.50 時 35)。
+    kap = A.KAPPA_NET
+    th = theta_h_threshold(y, kappa=kap, grid=[0, 20, 24, 30, 35, 40, 50])
+    print(f"\n  測試 2 — θ_h 門檻(ARC/ARGO,關蓄熱槽,**κ={kap:.2f} 真值**)")
     print(_fmt(th[th["機組"] == "arc"].drop(columns="機組")))
     arc = th[th["機組"] == "arc"]
     hit = arc[arc["非全開"] >= 0.05]["θ_h"]
     thr = float(hit.min()) if len(hit) else float("inf")
-    # κ 會把門檻推高(P2H 變貴 → 更難擠掉垃圾)→ 門檻是一個區間不是一個點
-    thk = theta_h_threshold(y, kappa=kap, grid=[thr, thr + 10])
-    thk = thk[(thk["機組"] == "arc") & (thk["非全開"] >= 0.05)]["θ_h"]
     print(
         f"    🔑 **非全開小時 ≥5% 的門檻 θ_h ≈ {thr:.0f} EUR/MWh_th "
-        f"({thr / 3.6 * DKK_PER_EUR_LOCAL:.0f} DKK/GJ_heat)**,κ=25.3 時推到 "
-        f"{'>' + f'{thr + 10:.0f}' if not len(thk) else f'{thk.min():.0f}'}"
-        f"\n       ⚠️ **擠掉垃圾的是 power-to-heat,不是尖峰鍋爐**(尖峰佔熱全程 0.00%)"
-        "\n       ⚠️ 這比原本預期的 ~50 低。門檻換算成 kr/GJ_heat 是為了直接對法定稅率。"
+        f"({thr / 3.6 * DKK_PER_EUR_LOCAL:.0f} DKK/GJ_heat)**"
+        "\n       ⚠️ **擠掉垃圾的是 power-to-heat,不是尖峰鍋爐**(尖峰佔熱全程 0.00%)"
+        f"\n       → 所以門檻由 κ 決定:κ=0 時是 30,κ={kap:.2f} 真值時是 {thr:.0f}。"
+        "**兩個參數是耦合的,不能各自判斷。**"
     )
-    assert thr < 60, "門檻若高過 60 EUR/MWh_th 才真的可以封存 θ_h"
+    # 🔑 **2026-08-15:θ_h 有公布值了,所以問題從「門檻在哪」變成「窗口區間有沒有跨過門檻」**
+    lo, hi = A.THETA_HEAT_WASTE_LOW, A.THETA_HEAT_WASTE_HIGH
+    ends = theta_h_threshold(y, kappa=kap, grid=[lo, hi])
+    e = ends[ends["機組"] == "arc"].set_index("θ_h")
+    print(
+        f"\n  🔑 **θ_h 的窗口區間 {lo:.1f}–{hi:.1f} EUR/MWh_th "
+        f"({lo / 3.6 * DKK_PER_EUR_LOCAL:.0f}–{hi / 3.6 * DKK_PER_EUR_LOCAL:.0f} DKK/GJ_heat)"
+        f" 全部落在門檻 {thr:.0f} 之下**"
+        f"\n     兩端的 ARC 調度:垃圾佔熱 {e.loc[lo, 'Qc佔熱']:.1%} → {e.loc[hi, 'Qc佔熱']:.1%}、"
+        f"非全開 {e.loc[lo, '非全開']:.1%} → {e.loc[hi, '非全開']:.1%} "
+        f"(供熱成本 {e.loc[lo, '供熱成本']:.2f} → {e.loc[hi, '供熱成本']:.2f})"
+        "\n     → **無實質差異** → θ_h 這條線收掉,不必再去挖 2021–2024 的真值。"
+    )
+    # 這兩條鎖住結論:區間必須在門檻下,且兩端的垃圾佔熱差距要小
+    assert hi < thr, (
+        f"θ_h 上界 {hi:.1f} 若跨過門檻 {thr:.0f},垃圾機組的調度型態會變 → 結論要改寫"
+    )
+    assert abs(e.loc[lo, "Qc佔熱"] - e.loc[hi, "Qc佔熱"]) < 0.02, (
+        "θ_h 兩端的垃圾供熱佔比若差超過 2 個百分點,就不能說『無實質差異』"
+    )
 
     tf = theta_f_scan(y, kappa=kap)
     print("\n  測試 3 — θ_f 會不會把尖峰鍋爐的日內 ρ 推正?")
@@ -679,7 +706,7 @@ def demo() -> None:
     hs = y[y["timestamp"].dt.month.isin([1, 2, 3, 4, 10, 11, 12])].reset_index(
         drop=True
     )
-    kap = A.p2h_tariff_eur_mwh_e()
+    kap = A.KAPPA_NET
     free, comm = run_model(hs, kap, "gas"), run_model(hs, kap, "gas", committed=True)
     rows = []
     for lab, r in [("LP 自由", free), ("LP +最小負載", comm)]:
@@ -718,7 +745,8 @@ def demo() -> None:
         f"{r24.loc['實測 電鍋爐', '日總ρ價']:+.3f} vs LP {m.loc['LP 電鍋爐 Qe', '日總ρ價']:+.3f};"
         f"\n     實測的日總量主要由**熱需求**決定(ρ={r24.loc['實測 電鍋爐', '日總ρ需求']:+.3f}),"
         f"LP 幾乎只看價格(對需求 ρ={m.loc['LP 電鍋爐 Qe', '日總ρ需求']:+.3f})。"
-        "\n     ❌ **不是燃料價或稅費**:加 κ=25.3 只改水準(P2H 4.10%→2.43%),簽名不動。"
+        "\n     ❌ **不是燃料價或稅費**:κ 只改水準,簽名不動;而且 κ 是**能源費不隨小時變**,"
+        "結構上就不可能改時點。"
         "\n     ❌ **也不主要是最小負載**:上面那組只補了 13% 的缺口(這是實測,不是推測)。"
         "\n     🔴 **主因仍未確定。** 最明確的候選是**輔助服務市場**"
         "(電鍋爐若靠調頻收入,調度就由啟動訊號而非現貨價決定)——"

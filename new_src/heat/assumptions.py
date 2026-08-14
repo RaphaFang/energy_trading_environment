@@ -13,89 +13,206 @@
 用法:python new_src/heat/assumptions.py   (印出全部假設 + 佔位符警告)
 """
 
-# ── 佔位符:尚未查證,預設 0,論文須註明 ──────────────────────────────
-# ⚠️ 這三個歸零的**方向**是一致的:全都讓 power-to-heat 看起來比實際便宜。
-#    P2H 正是 C3 章的主題 → 這是目前模型最大的已知偏誤來源。
 
-TAU_EL = 0.0
-"""τ elafgift 電力稅 [EUR/MWh_e] —— **佔位符**。
+# ══════════════════════════════════════════════════════════════════════
+#  匯率 —— 所有稅費換算的基礎,所以放最前面
+# ══════════════════════════════════════════════════════════════════════
 
-制度叫 **elpatronordningen**,2008 年起存在,2019–2020 也適用,但當時是「降低稅率」
-而非現行的「退到最低額 0.4 øre/kWh」。逐年稅率在 elafgiftsloven 的法定附表裡,
-二手來源都不給數字(查兩次未果)。現行淨額量級僅約 **EUR 0.05/MWh_e**,小到不影響排序。
+DKK_PER_EUR = 7.46
+"""丹麥克朗兌歐元。DKK 在 ERM II 下釘住歐元,中心匯率 7.46038、波動帶 ±2.25%
+(實務上維持在 ±0.5% 內)→ 用固定值,不用逐日匯率。
 
-🚩 **但減免的資格條件可能很重要**(2026-08-11 查到):要拿到減免必須是
-「有熱電容量的已登記營業稅熱生產者」,定義為**熱電機組能涵蓋一年至少 75% 的總供熱量**
-→ **獨立的電鍋爐或熱泵不適用減免,只有掛在熱電廠底下的才行**。
-DK2 實測那 1.4% 的 P2H 裡兩種可能都有 → 這是 P2H 之謎的候選解釋之一。
+⚠️ 與煤價的 `EURUSD=X` 不同:那個要逐日,因為 USD 是浮動的。DKK 不是。
 """
 
-KAPPA_NET = 0.0
-"""κ nettarif 網路關稅 [EUR/MWh_e] —— **佔位符**,而且**這個才是大的**。
 
-與 elafgift 不同,**網路關稅不可退**。soeB25 Tabel 10 的
-`el_transport_margin_over_70000MWh` = 2025 年 **189 DKK2025/MWh_e**(2026 年 167)
-→ 換算約 **EUR 25/MWh_e**,除以 COP 後對熱約 **EUR 9/MWh_th**。
-而修完基準 bug 後 P2H 的總價值只剩約 EUR 1.8/MWh_th → **足以把 P2H 完全壓掉**。
+# ══════════════════════════════════════════════════════════════════════
+#  ① 電力側稅費 τ / κ —— ✅ 2026-08-15 起是真值,不再是佔位符
+#     兩者都只打在**買電**上:成本式的 (τ+κ)·P⁻,P⁻ = max(−P, 0)。
+#     CHP 賣電走 P⁺,完全不碰。→ 它們**只影響 power-to-heat**,不是共同加項,
+#     所以不會在 merit order 裡相消。
+# ══════════════════════════════════════════════════════════════════════
 
-⚠️ 這個數字在 `new_data/soeb25_&_extra_params/soeb25_params.csv` 裡已經有真值,
-   之所以仍設 0,是因為**尚未決定它在模型裡的適用邊界**(哪些機組落在
-   >70,000 MWh 級距、電鍋爐與熱泵是否同級距、是否含在 SØB 的其他項裡)。
-   要測 P2H 假設就把它設成真值重跑 —— 見模組末的 `p2h_tariff_eur_mwh_e()`。
+ELPATRON_CAP_DKK_MWH = {
+    2020: 221.0,
+    2021: 8.0,
+    2022: 8.0,
+    2023: 8.0,
+    2024: 8.0,
+    2025: 8.0,
+    2026: 8.0,
+}
+"""**elpatronordningen 的最高稅負上限** [DKK/MWh_e],逐年公布值。
 
-🔑 **這個 189 幾乎確定是上界,不是 DH 廠實付**(2026-08-13):大型 DH 電鍋爐接在
-**高壓層**、透過自己的平衡責任方買電,不走配電網也沒有零售加成。
-所以**反推值若真的收斂到 25.3 才該起疑** —— 那等於在說 DH 廠付的是配電級費率。
-⚠️ 參數名 `over_70000MWh` 指的是**年用電 >70,000 MWh 的大用戶級距**(已對 CSV 確認),
-   不是家戶均值;但 **Tabel 10 本身沒看過**,無法排除該級距仍內含配電成分。
+來源:PwC《Forsyningsvirksomheder – overblik over afgiftssatser》各年版,表
+「Maksimal afgiftsbelastning på fjernvarme ab værk (elpatronordningen)」的 **Elektricitet** 列。
+
+🔑 **為什麼用上限而不是名目稅率**:一般工商用電的 elafgift 在窗口內是 **72–76 øre/kWh**
+(720–760 DKK/MWh),但區域供熱產熱用電適用 elpatronordningen —— 一個**封頂退稅**機制,
+超過上限的部分可退 → **廠實付的就是上限本身**。
+
+🔴 **2020 → 2021 上限砍 96%(221.0 → 8.0)**。2020 年電鍋爐每 MWh_e 多付約 **EUR 28.6**,
+足以讓它幾乎不可能進 merit order → **這是「窗口從 2021-01 起算」的第四個獨立理由**
+(另三個:2019–2020 沒有生質燃料價、AMV3 燃煤 2020-03 退出、BIO4 2019-10 進場)。
+**2019–2020 的 P2H 與 2021 之後不是同一個制度期** —— 有人要把窗口往前拉時拿這條出來。
 """
 
-THETA_HEAT_WASTE = 0.0
-"""θ_h 垃圾焚化的**熱側稅楔** [EUR/MWh_th] —— **佔位符**,掛在 **Q** 上。
+TAU_EL = ELPATRON_CAP_DKK_MWH[2021] / DKK_PER_EUR
+"""τ elafgift 電力稅 [EUR/MWh_e] ≈ **1.07**。✅ **真值,不是佔位符**(2026-08-15)。
 
-🔴 **2026-08-14 從 `THETA_WASTE` 搬過來,而且換了變數(F → Q)。這是本次修正的重點。**
+`8.0 DKK/MWh_e ÷ 7.46`。**窗口內 2021–2026 是常數 8.0** → 不需要逐年序列,也不需要指數化推算。
+量級:對電價 €30–80/MWh 是 **1–3%**,填 0 與填真值對調度幾乎無差別 ——
+但既然真值已知就填,**省掉論文裡「為何忽略」的辯護**。
 
-丹麥垃圾焚化的三項國內稅 —— **affaldsvarmeafgift**、**tillægsafgift**、**CO2-afgift**
-—— 計徵基礎**全部是熱**(Skat 法律指引 E.A.4.2.1 / E.A.4.5.7.3;
-kulafgiftsloven / kuldioxidafgiftsloven,2010-01-01 起從 affaldsafgiftsloven 移入):
+⚠️ **τ 可退、κ 不可退**,兩者性質不同,不要類比。
+"""
 
-  · affaldsvarmeafgift  對焚化廠**交付出去的熱量**課徵,kr/GJ_heat
-  · tillægsafgift        按每 GJ **產出熱量**課徵,kr/GJ_heat
-  · CO2-afgift           僅對不可生物分解部分。形式上是 kr/tCO2,但**應稅量由熱量導出**
-                         (Skat 範例用 v-formel 1.20 從熱反推燃料:5 GJ 熱 ÷ 1.20 = 4.17 GJ
-                          燃料,再乘法定標準 0.070 tCO2/GJ)→ 最終仍與 Q 成比例。
-  · 持有 Energistyrelsen CO2 排放許可的熱電廠,**用於發電的燃料免徵**。
-    v-formel 存在的唯一目的就是把熱切出來。
+# Energinet 對用電只收兩種費(2025 年費率,øre/kWh)
+NETTARIF_ORE_KWH = 6.1
+"""nettarif:132/150 kV 與 400 kV 網及對外連接線的投資、折舊、營運(含網損)、維護。"""
+SYSTEMTARIF_ORE_KWH = 7.4
+"""systemtarif:供電安全與品質、系統服務(主要是備轉採購)、系統營運、DataHub。"""
+NETTARIF_HV_REBATE_ORE_KWH = 0.5
+"""**自有 132/150 kV 變壓器、在 132/150 kV 側結算**者的 nettarif 減免。"""
+SYSTEMTARIF_LARGE_REBATE = 0.90
+"""**年用電超過 100 GWh 的部分** systemtarif 減 90%。"""
 
-**為什麼掛錯變數不能靠掃描救**:θ 掛 F、真實世界掛 Q,誤差方向取決於 `Q/F`,
-而那是模型的**內生輸出** → 沿著錯的方向掃,掃出來的區間是假的。而且這種誤差會
-**偽裝成別的東西**,最可能偽裝成「模型對價格過度反應」—— 正是目前未解的那個問題。
-⚠️ **背壓關係在掩護這個錯誤**:`Q = η_th·F` 讓兩種形狀在背壓機上恆成比例,
-   所以「調 θ 去對數字」是調得出來的 —— 但它會在抽汽彈性或部分負載時壞掉。
+KAPPA_NET = (
+    (
+        (NETTARIF_ORE_KWH - NETTARIF_HV_REBATE_ORE_KWH)
+        + SYSTEMTARIF_ORE_KWH * (1.0 - SYSTEMTARIF_LARGE_REBATE)
+    )
+    * 10.0
+    / DKK_PER_EUR
+)
+"""κ nettarif 電網關稅 [EUR/MWh_e] ≈ **8.50**。✅ **真值,不是佔位符**(2026-08-15)。
 
-**這是窗口內固定的純量,不做逐年**,地位與 `PHI_GATE` 相同。
-🔑 **與 φ 不重複計入**:φ 掛 F(每收一噸垃圾的收入,噸數透過熱值與 F 成正比)、
-   θ_h 掛 Q —— **不同變數,不可能靜默互相抵消**。兩者必須同時保留:
-   費率是收入、稅是成本,ARC 訂價時把稅覆蓋進去 ≠ 那筆費率是稅後淨額。**漏掉 θ_h 才是錯的。**
+    (6.1 − 0.5) + 7.4 × 0.10 = 6.34 øre/kWh = 63.4 DKK/MWh_e ÷ 7.46 = 8.50 EUR/MWh_e
+
+兩項減免對哥本哈根的大型電鍋爐**幾乎確定成立**:接在高壓層、年用電量遠超 100 GWh。
+窗口內變動很小(Energinet 合計 2024 = 12.5、2025 = 13.5、2026 = 11.5 øre/kWh)→ 用單一常數。
+**不含不該含的**:只有 Energinet 的輸電與系統費;TSO 接入的機組不付配電費,也沒有零售加成。
+
+🔴 **為什麼不用 SØB25 Tabel 10 的 €25.2(188 DKK/MWh,>70,000 MWh 級距)—— 論文要交代**:
+  ① **種類錯誤**:SØB §4.1 明文該章是**社會經濟價格**(samfundsøkonomiske priser),
+     **不得用於企業經濟計算**(selskabsøkonomiske beregninger)。而我們的 LP 算的正是
+     機組自身成本與 merit order = 企業經濟計算。SØB 的數字經 sunk cost 扣除、abonnement
+     修正,並以 5 個半年的實績外推 —— 是為公共投資評估構造的量,不是任何一家廠實付的錢。
+  ② **內容錯誤**:SØB §4.4 說明該表的合計加項含 **avance(零售加成)+ 配電費 + 輸電費**。
+     TSO 接入的電鍋爐**配電費與零售加成都不付**,只付輸電 → 真值只有它的約三分之一。
+
+📌 **回頭看**:先前用行為反推 τ+κ 得到 **+€25.5**,看似與 SØB 的 €25.3 吻合 ——
+   那是巧合,而且**吻合本身該視為警訊而非佐證**。現在這個判斷有量化依據了。
+
+🔴 **κ 不可能解釋 P2H 的時點錯誤**:2025 年 nettarif 仍以能源費形式收取
+(øre/kWh,所有度數相同)、**不隨小時變動** → 它只改水準不改時點。
+   實測 P2H 日總量 ρ(需求)=+0.335 vs 模型 −0.74 的落差**不在這裡** → 調頻收入那條線更孤立。
+
+⚠️ **系統訂閱費 182 DKK/年/計量點是固定費,與用電量無關,不進邊際成本** —— 不要加。
+⚠️ **2026 起的結構斷點**:Energinet 預計自 2026 年起,TSO 接入系統用戶的 nettarif 改以
+   **容量費(DKK/MW)**收取 → nettarif 從邊際成本整個消失,只剩 systemtarif 0.74 øre/kWh,
+   κ 掉到 **EUR 1/MWh 量級**。窗口若涵蓋 2026,論文要註明這個斷點。
+"""
+
+KAPPA_SENSITIVITY = {
+    "無任何減免": 13.50,
+    "僅 132/150 kV": 13.00,
+    "僅 >100 GWh": 6.84,
+    "兩項都適用(採用值)": 6.34,
+    "再加限制網路接取協議": 3.34,
+}
+"""κ 的敏感度情境 [øre/kWh]。要掃就掃 **EUR 4.5 → 18**。"""
+
+# ⚠️ **對稱性缺口(已知,不擋工作)**:CHP 那側也有生產端費率 ——
+#    indfødningstarif 0.5 + balancetarif 0.65 øre/kWh,2025 年合計約 **EUR 1.5/MWh_e**,
+#    該打在 `P⁺` 上。**目前式子裡沒有。** 量級小,但要對稱處理時這是 κ 的對應物。
+
+# ══════════════════════════════════════════════════════════════════════
+#  ② 垃圾焚化熱側稅楔 θ_h —— 區間已定、待敏感度確認
+# ══════════════════════════════════════════════════════════════════════
+
+WASTE_V_FORMEL = 1.20
+"""v-formel:每 1 GJ_heat 歸屬 `1/1.20 = 0.833` GJ_fuel,其餘算在發電上(**發電免徵**)。"""
+WASTE_EF_STATUTORY_T_PER_GJ = 0.02834
+"""**法定標準排放係數 28.34 kg CO2/GJ_fuel**。
+
+🔴 **不可用 `ef_affald = 42.5`** —— 那是 DCE 的全國實測平均、含生物碳,
+與稅法的法定標準值是**不同世界的數字**,不可互換。
+"""
+
+WASTE_TAX_DKK_GJ = {
+    #  年: (A 能源稅 affaldsvarmeafgift + tillægsafgift, B CO2 稅率 DKK/tCO2)
+    2025: (28.8, 851.8),
+    2026: (29.1, 860.3),
+}
+"""垃圾焚化熱側稅的**公布值**。A 直接按產出熱課(kr/GJ_heat,不用換算);
+B 按每噸 CO2 課,要經 v-formel 與法定排放係數兩步換算到熱基準。
+
+🔴 **2019–2024 沒有任何一個公布的垃圾熱稅率** —— PwC 是到 2025/2026 版才加上那幾列。
+"""
+
+WASTE_TAX_PROXY_DKK_GJ = {2021: 56.5, 2022: 56.7, 2024: 61.9}
+"""⚠️ **代理值,非公布值,不可引用為稅率事實**(只能當量級參考)。
+
+A 那一欄用 elpatronordningen 的**能源稅上限**當代理(它與垃圾熱稅在現行 kulafgiftsloven
+稅率表裡共用同一個 2015 基準 24.1)。**這條代理線本身在 2020→2021 有對不上的斷點**
+(回推基準 45.4 vs 49.8)。
+"""
+
+
+def waste_heat_tax_dkk_gj(year: int) -> float:
+    """把公布的兩筆稅合成 θ_h [DKK/GJ_heat]。**重新推導,不抄結果。**
+
+    A [kr/GJ_heat]  直接就是熱基準,不換算
+    B [kr/GJ_heat] = 稅率[kr/tCO2] × 0.02834 [t/GJ_fuel] ÷ 1.20 [GJ_fuel/GJ_heat]
+    """
+    a, co2_rate = WASTE_TAX_DKK_GJ[year]
+    return a + co2_rate * WASTE_EF_STATUTORY_T_PER_GJ / WASTE_V_FORMEL
+
+
+def dkk_gj_to_eur_mwh_th(x: float) -> float:
+    """DKK/GJ_heat → EUR/MWh_th(`× 3.6 GJ/MWh ÷ 匯率`)。"""
+    return x * 3.6 / DKK_PER_EUR
+
+
+THETA_HEAT_WASTE_LOW = dkk_gj_to_eur_mwh_th(waste_heat_tax_dkk_gj(2026))
+"""θ_h **下界** ≈ **23.9** EUR/MWh_th(= 49.4 DKK/GJ_heat,2026 公布值)。"""
+
+THETA_HEAT_WASTE_HIGH = 30.0
+"""θ_h **上界** = 30.0 EUR/MWh_th(≈ 62 DKK/GJ_heat,2024 代理值,見 `WASTE_TAX_PROXY_DKK_GJ`)。"""
+
+THETA_HEAT_WASTE = THETA_HEAT_WASTE_LOW
+"""θ_h 垃圾焚化熱側稅楔 [EUR/MWh_th],掛在 **Qc** 上。**採用下界**,上界跑敏感度。
+
+🔴 **為什麼不能只填 2026 的值**:綠色稅改(2025-01-01 生效)**同時動了兩筆、方向相反**:
+
+    A 能源稅   2024 約 57  →  2025 = 28.8   (砍一半)
+    B CO2 稅率 2024 = 196  →  2025 = 851.8  (四倍)
+
+「CO2 稅四倍化」是真的,但 **A 原本比 B 大得多,砍半的絕對值蓋過四倍化的絕對值**
+→ **淨效果向下**,所以 2025/2026 是全窗口的**最低點,不是代表值**。
+⚠️ **不要把 2026 的值鋪滿 2021–2024**,那會系統性低估前四年。
 """
 
 THETA_FUEL_GAS = 0.0
-"""θ_f **燃料側**國內碳稅 [EUR/tCO2] —— **佔位符**,掛在 **F** 上(原 θ 的位置)。
+"""θ_f 燃料側國內碳稅 [EUR/tCO2],掛在 **F**(進 `ef` 括號內)。**維持 0,已由掃描排除。**
 
-按燃料碳含量課徵,所以進 `ef·(p_CO2 + θ_f)` 的括號裡。
-**靠 `ef` 歸零自動切換,不需要 if**:垃圾與生質的 `ef_chp = 0` → 自動不課;
-天然氣尖峰鍋爐 `ef_pb = 0.20` → 會課到。這是本次重構掉出來的副產品。
+2026-08-14 的掃描結論(見 `STATUS.md` §9.4 測試 3):θ_f **不但沒把尖峰鍋爐的日內 ρ 推正**,
+還讓它幾乎消失(佔熱 5.95% → 0.22%),**離實測的 5.21% 更遠**。
+→ 查天然氣的逐年國內碳稅**不會修好時點問題**,這條分支已關閉。
+⚠️ 副產品推論「實測 5.21% 本身是 DK2 尖峰鍋爐沒付大額國內碳稅的旁證」
+   —— 建立在一個**時點已知是錯**的模型上,**不可引用**。
 
-量級感:`ef_gas = 57.1` kg/GJ ⇒ θ_f = 100 EUR/tCO2 ≈ 5.71 EUR/GJ_fuel
-≈ **20.6 EUR/MWh_fuel** —— 對尖峰鍋爐是可觀的成本增加。
-上界參考:丹麥 2025 年 CO2 稅約 851.8 DKK/tCO2 ≈ **EUR 114**(綠色稅改 2025-01-01 生效,
-rumvarme 無漸進過渡)。⚠️ 這個數字尚未一手查證,只用來定掃描上界。
+靠 `ef` 歸零自動切換,不需要 if:垃圾與生質 `ef_chp = 0` → 自動免疫;氣鍋爐 `ef_pb = 0.20` → 生效。
 """
 
-PLACEHOLDERS = ["TAU_EL", "KAPPA_NET", "THETA_HEAT_WASTE", "THETA_FUEL_GAS"]
+PLACEHOLDERS: list[str] = []
+"""✅ **2026-08-15 起清空**:τ / κ 已填真值,θ_h 有公布值與區間,θ_f 已由掃描排除。
 
-# `THETA_WASTE` 已退役(2026-08-14):它掛在 F 上而三項稅全部隨 Q 走。
-# 刻意**不留別名** —— 留了會讓舊呼叫端默默套用錯的變數,而這正是要修的東西。
+仍然**不是「模型沒有假設」** —— 只是這四個外部參數不再是「我隨手設的 0」。
+真正的不確定性移到別處了:θ_h 的 2021–2024 沒有公布值(用區間處理)、
+`ef_chp` 對垃圾仍是量級值、`cop_from_temp` 的 70°C 供水溫仍是編的。
+"""
 
 
 # ── 統一假設:有來源,套用範圍刻意放寬 ────────────────────────────────
@@ -118,13 +235,6 @@ HEATING_VALUE_WASTE_GJ_PER_TON = 11.70
 """垃圾的熱值 [GJ/ton]。來源:soeB25 Tabel 1 儲存格 B18
 (`new_data/soeb25_&_extra_params/soeb25_params.csv` 的 `heating_value_affald`)。"""
 
-DKK_PER_EUR = 7.46
-"""丹麥克朗兌歐元。DKK 在 ERM II 下釘住歐元,中心匯率 7.46038、波動帶 ±2.25%
-(實務上維持在 ±0.5% 內)→ 用固定值,不用逐日匯率。
-
-⚠️ 與煤價的 `EURUSD=X` 不同:那個要逐日,因為 USD 是浮動的。DKK 不是。
-"""
-
 
 def waste_fuel_price_eur_mwh(gate_fee_dkk_per_ton: float = PHI_GATE) -> float:
     """垃圾當燃料的價格 [EUR/MWh_fuel] —— **負值**(收錢燒垃圾)。
@@ -139,11 +249,14 @@ def waste_fuel_price_eur_mwh(gate_fee_dkk_per_ton: float = PHI_GATE) -> float:
 
 
 def p2h_tariff_eur_mwh_e(dkk_per_mwh_e: float = 189.0) -> float:
-    """把 soeB25 的網路關稅換成 EUR/MWh_e,方便直接餵給 `KAPPA_NET` 做敏感度。
+    """soeB25 Tabel 10 的運輸成本換算 [EUR/MWh_e]。
 
-    預設 189 DKK2025/MWh_e = soeB25 Tabel 10 的 2025 年
-    `el_transport_margin_over_70000MWh`(2026 年是 167)。
-    **這個函式不會改 KAPPA_NET** —— 要測就在呼叫端明確傳進 `solve()`。
+    🔴 **2026-08-15:這個值已被否決,不可當 κ 用。** 保留只為了①論文要交代為什麼不用
+    ②舊結果的對照。兩個獨立理由見 `KAPPA_NET` 的 docstring:
+    ①**種類錯誤** —— SØB §4.1 明文那是社會經濟價格,不得用於企業經濟計算;
+    ②**內容錯誤** —— 含 avance(零售加成)與配電費,而 TSO 接入的電鍋爐兩者都不付。
+
+    真值是 `KAPPA_NET` ≈ 8.50(約為這個數的三分之一)。
     """
     return dkk_per_mwh_e / DKK_PER_EUR
 
@@ -204,10 +317,6 @@ def warn_placeholders(force: bool = False) -> list[str]:
         print(
             f"  ⚠️ 佔位符仍為 0(結果在這些維度上是「無此成本」的反事實):{', '.join(zeroed)}"
         )
-        print(
-            f"     其中 KAPPA_NET 有真值可用(soeB25 ≈ EUR {p2h_tariff_eur_mwh_e():.1f}/MWh_e),"
-            "歸零會系統性高估 power-to-heat"
-        )
     return zeroed
 
 
@@ -231,11 +340,49 @@ def demo() -> None:
         f"× 3.6 ÷ {DKK_PER_EUR} = **{w:.2f} EUR/MWh_fuel**(負值 = 收錢燒垃圾)"
     )
 
-    t = p2h_tariff_eur_mwh_e()
-    assert 20 < t < 30, f"網路關稅換算量級不對:{t:.2f}"
+    # ── τ / κ:必須從公布費率**重新推導**,不是抄一個結果 ──────────────
+    assert abs(TAU_EL - 8.0 / DKK_PER_EUR) < 1e-9, (
+        "τ 必須等於 elpatronordningen 2021 上限換算"
+    )
+    assert (
+        abs(ELPATRON_CAP_DKK_MWH[2020] / ELPATRON_CAP_DKK_MWH[2021] - 27.625) < 1e-6
+    ), "2020/2021 的上限比例變了 —— 那是『窗口從 2021 起算』的理由之一,要重新確認"
+    d2020 = (ELPATRON_CAP_DKK_MWH[2020] - ELPATRON_CAP_DKK_MWH[2021]) / DKK_PER_EUR
     print(
-        f"  網路關稅 ok: 189 DKK/MWh_e = EUR {t:.1f}/MWh_e"
-        f"(除以 COP 2.8 → 對熱 EUR {t / 2.8:.1f}/MWh_th)"
+        f"  τ ok: elpatronordningen 上限 {ELPATRON_CAP_DKK_MWH[2021]:.1f} DKK/MWh_e ÷ {DKK_PER_EUR}"
+        f" = **{TAU_EL:.2f} EUR/MWh_e**(2021–2026 常數)"
+        f"\n     🔴 2020 年上限是 {ELPATRON_CAP_DKK_MWH[2020]:.0f} → 電鍋爐每 MWh_e 多付 EUR {d2020:.1f}"
+        "  = 窗口從 2021 起算的第四個獨立理由"
+    )
+    want_k = ((6.1 - 0.5) + 7.4 * 0.10) * 10.0 / DKK_PER_EUR
+    assert abs(KAPPA_NET - want_k) < 1e-9, (
+        "κ 必須從 Energinet 的兩筆費率 + 兩項減免重算"
+    )
+    assert 4.4 < KAPPA_NET < 18.2, f"κ 應落在敏感度區間內:{KAPPA_NET:.2f}"
+    assert KAPPA_NET < p2h_tariff_eur_mwh_e() / 2, (
+        "κ 真值應該遠低於 SØB25 Tabel 10 的 25.2 —— 後者含配電費與零售加成"
+    )
+    print(
+        f"  κ ok: (6.1−0.5) + 7.4×0.10 = 6.34 øre/kWh = **{KAPPA_NET:.2f} EUR/MWh_e**"
+        f"\n     🔴 **不用** SØB25 Tabel 10 的 {p2h_tariff_eur_mwh_e():.1f}:那是社會經濟價格"
+        "(SØB §4.1 明文不得用於企業經濟計算),且含配電費與零售加成"
+    )
+    # ── θ_h:兩筆稅要能從公布值合成,而且 2025/2026 必須是窗口低點 ────────
+    for yr in WASTE_TAX_DKK_GJ:
+        a, c = WASTE_TAX_DKK_GJ[yr]
+        assert abs(waste_heat_tax_dkk_gj(yr) - (a + c * 0.02834 / 1.20)) < 1e-9
+    lo, hi = THETA_HEAT_WASTE_LOW, THETA_HEAT_WASTE_HIGH
+    assert lo < hi, f"θ_h 下界應小於上界:{lo:.1f} vs {hi:.1f}"
+    assert all(dkk_gj_to_eur_mwh_th(v) > lo for v in WASTE_TAX_PROXY_DKK_GJ.values()), (
+        "2021–2024 的代理值應**全部高於** 2026 公布值 —— 綠色稅改的淨效果是稅負下降,"
+        "所以 2025/2026 是窗口低點不是代表值"
+    )
+    print(
+        f"  θ_h ok: 2025 {waste_heat_tax_dkk_gj(2025):.1f} / 2026 {waste_heat_tax_dkk_gj(2026):.1f}"
+        f" DKK/GJ_heat(A 能源稅 + B CO2稅×{WASTE_EF_STATUTORY_T_PER_GJ}÷{WASTE_V_FORMEL})"
+        f"\n     → 區間 **{lo:.1f} – {hi:.1f} EUR/MWh_th**;2021–2024 只有代理值"
+        f"({', '.join(f'{k}:{dkk_gj_to_eur_mwh_th(v):.1f}' for k, v in WASTE_TAX_PROXY_DKK_GJ.items())})"
+        "\n     ⚠️ 代理值不可引用為稅率事實;**不要把 2026 的值鋪滿 2021–2024**"
     )
     # 生質價:2025 起有、2025 以前**必須拋錯**(這一條鎖住「不准回填」)
     import os
@@ -255,7 +402,13 @@ def demo() -> None:
             f"秸稈 €{biomass_fuel_price_eur_mwh(2025, 'straw'):.1f}"
             "\n     🔴 **2021–2024 仍然沒有,阻塞未解**;2025 那格也只是遠期觀點不是結算價"
         )
-    print(f"  佔位符 {len(PLACEHOLDERS)} 個:{', '.join(PLACEHOLDERS)}")
+    assert not PLACEHOLDERS, (
+        f"PLACEHOLDERS 應已清空(τ/κ 有真值、θ_h 有區間、θ_f 已排除),實得 {PLACEHOLDERS}"
+    )
+    print(
+        "  佔位符 **0 個** —— 但這不等於「模型沒有假設」:θ_h 的 2021–2024 沒有公布值"
+        "(用區間處理)、`ef_chp` 對垃圾仍是量級值、`cop_from_temp` 的 70°C 供水溫仍是編的"
+    )
 
 
 if __name__ == "__main__":
