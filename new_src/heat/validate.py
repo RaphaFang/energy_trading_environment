@@ -243,6 +243,7 @@ def run_model(
     committed: bool = False,
     pb_max: float = None,
     fuel_price: float = None,
+    theta_f: float = None,
 ) -> dict:
     """把同一段真實 DK2 熱需求與電價餵進 `chp.solve()`,回傳逐時排程。
 
@@ -289,6 +290,7 @@ def run_model(
         cop=chp.cop_from_temp(d["tair"].to_numpy()),
         kappa=kappa,
         committed=committed,
+        theta_f=theta_f,
     )
 
 
@@ -297,6 +299,94 @@ def run_model(
 # 由 demo() 從資料重新推導並驗證,不是硬編。
 EB_OBSERVED_MAX = 98.0
 HP_OBSERVED_MAX = 25.9
+
+
+def theta_h_threshold(y: pd.DataFrame, kappa: float, grid=None) -> pd.DataFrame:
+    """測試 2 — **θ_h 要多大,垃圾機組才不再永遠全開?**
+
+    核心策略是「不問 θ 是多少,問 θ 要多大結論才會變」 —— 只有門檻落進合理稅負區間時,
+    才值得去查真值。
+
+    🔴 **關掉蓄熱槽**(`s_max=0`):燃料價是負的 → LP 會**把蓄熱槽的散熱當棄熱管道**,
+    多燒多賺,`Qc` 因此可以到熱需求的 106–115%。θ_h 掛在 Qc 上會第一個殺掉這個行為,
+    門檻會被它汙染。關掉之後 ARC/ARGO 的基準供熱成本 ≈ **−€47.5**/MWh_th。
+
+    ⚠️ 熱需求用 **DK2 真實形狀縮到機組熱容量**(尖峰對齊 Q_max)—— 這是重建的設定,
+    不是原始腳本(那支沒進 repo)。舊記錄的 −€49.95/−51.01 用這個設定重現不出來。
+    """
+    import chp
+    import dk2_fleet as F
+
+    grid = [0, 10, 20, 25, 30, 40, 50] if grid is None else grid
+    gas, co2 = y["gas"].to_numpy(), y["co2"].to_numpy()
+    cop = chp.cop_from_temp(y["tair"].to_numpy())
+    import assumptions as A
+
+    rows = []
+    for key in F.runnable():
+        pl = chp.dk2_plant(key, s_max=0.0, s_rate=0.0)
+        dem = y["dem"].to_numpy() * ((pl.p_max / pl.cb) / y["dem"].max())
+        for th in grid:
+            r = chp.solve(
+                y["price"].to_numpy(),
+                dem,
+                pl,
+                fuel_price=A.waste_fuel_price_eur_mwh(),
+                fuel_price_pb=gas,
+                co2_price=co2,
+                cop=cop,
+                theta_h=float(th),
+                kappa=kappa,
+            )
+            rows.append(
+                dict(
+                    機組=key,
+                    θ_h=float(th),
+                    DKK_per_GJ=th / 3.6 * DKK_PER_EUR_LOCAL,
+                    供熱成本=r["heat_cost_per_mwh"],
+                    Qc佔熱=r["Qc"].sum() / dem.sum(),
+                    非全開=float(((r["Qpb"] + r["Qe"] + r["Qh"]) > 1.0).mean()),
+                )
+            )
+    return pd.DataFrame(rows)
+
+
+def theta_f_scan(y: pd.DataFrame, kappa: float, grid=None) -> pd.DataFrame:
+    """測試 3 — θ_f(天然氣國內碳稅)會不會把尖峰鍋爐的日內 ρ 推正?
+
+    ⚠️ **佔比必須跟 ρ 一起報**:燃料價掃描那次的教訓 —— 佔比 0.25% 的格子算出來的 ρ
+    是雜訊不是估計值。`days` 欄就是檢定力,低於 ~30 天的 ρ 不要讀。
+    """
+    import assumptions as A
+    import chp
+
+    grid = [0, 25, 50, 75, 100, 125, 150] if grid is None else grid
+    gas, co2 = y["gas"].to_numpy(), y["co2"].to_numpy()
+    cop = chp.cop_from_temp(y["tair"].to_numpy())
+    tot = y["dem"].sum()
+    rows = []
+    for tf in grid:
+        r = run_model(y, kappa, theta_f=float(tf))
+        z = y.copy()
+        z["Qpb"] = r["Qpb"]
+        a = intraday_rho(z, "Qpb")
+        rows.append(
+            dict(
+                θ_f=float(tf),
+                對尖峰鍋爐=tf * chp.Plant.ef_pb / chp.Plant.eta_pb,
+                日內ρ=a["rho"],
+                days=a["days"],
+                尖峰佔熱=r["Qpb"].sum() / tot,
+                P2H佔熱=(r["Qe"].sum() + r["Qh"].sum()) / tot,
+            )
+        )
+    _ = A, gas, co2, cop  # 保持與 theta_h_threshold 對稱的簽名,實際由 run_model 取用
+    return pd.DataFrame(rows)
+
+
+DKK_PER_EUR_LOCAL = 7.46
+"""換算到稅法自己的單位(kr/GJ_heat)用 —— 這樣門檻才能直接跟法定稅率比對。
+與 `assumptions.DKK_PER_EUR` 同值,在這裡重複一次是為了讓表格自帶單位換算。"""
 
 
 def demo() -> None:
@@ -546,6 +636,43 @@ def demo() -> None:
         "但目錄的 `44 Natural Gas DH Only` **沒有 Startup cost 欄**"
         "\n        (只有 min load 0.15 與啟動時間)→ **這個 confound 目前無法排除**,"
         "而且加啟停要整數變數。見 STATUS.md §8.6。"
+    )
+
+    # ── ⑥d θ 拆分後的兩個閾值掃描(2026-08-14)────────────────────────────
+    kap = A.p2h_tariff_eur_mwh_e()
+    th = theta_h_threshold(y, kappa=0.0)
+    print("\n  測試 2 — θ_h 要多大,垃圾機組才不再永遠全開?(ARC/ARGO,關蓄熱槽)")
+    print(_fmt(th[th["機組"] == "arc"].drop(columns="機組")))
+    arc = th[th["機組"] == "arc"]
+    hit = arc[arc["非全開"] >= 0.05]["θ_h"]
+    thr = float(hit.min()) if len(hit) else float("inf")
+    # κ 會把門檻推高(P2H 變貴 → 更難擠掉垃圾)→ 門檻是一個區間不是一個點
+    thk = theta_h_threshold(y, kappa=kap, grid=[thr, thr + 10])
+    thk = thk[(thk["機組"] == "arc") & (thk["非全開"] >= 0.05)]["θ_h"]
+    print(
+        f"    🔑 **非全開小時 ≥5% 的門檻 θ_h ≈ {thr:.0f} EUR/MWh_th "
+        f"({thr / 3.6 * DKK_PER_EUR_LOCAL:.0f} DKK/GJ_heat)**,κ=25.3 時推到 "
+        f"{'>' + f'{thr + 10:.0f}' if not len(thk) else f'{thk.min():.0f}'}"
+        f"\n       ⚠️ **擠掉垃圾的是 power-to-heat,不是尖峰鍋爐**(尖峰佔熱全程 0.00%)"
+        "\n       ⚠️ 這比原本預期的 ~50 低。門檻換算成 kr/GJ_heat 是為了直接對法定稅率。"
+    )
+    assert thr < 60, "門檻若高過 60 EUR/MWh_th 才真的可以封存 θ_h"
+
+    tf = theta_f_scan(y, kappa=kap)
+    print("\n  測試 3 — θ_f 會不會把尖峰鍋爐的日內 ρ 推正?")
+    print(_fmt(tf))
+    # 只有檢定力足夠的格子可讀(佔比撐得住 → days 夠多)
+    ok = tf[tf["days"] >= 30]
+    assert (ok["日內ρ"] < 0).all(), (
+        f"θ_f 若把 ρ 推正,STATUS §8.6 要改寫:{ok[['θ_f', '日內ρ', 'days']].to_dict('records')}"
+    )
+    print(
+        f"    🔴 **θ_f 沒有把符號推正**(檢定力足夠的格子:ρ "
+        f"{ok['日內ρ'].max():.3f} ~ {ok['日內ρ'].min():.3f},全為負)。"
+        f"\n       而且它讓尖峰鍋爐**幾乎消失**:佔熱 {tf['尖峰佔熱'].iloc[0]:.2%} → "
+        f"{tf['尖峰佔熱'].iloc[-1]:.2%},離實測 {real['pb']:.2%} **更遠**。"
+        "\n       → 實測的 5.21% 本身就是「DK2 尖峰鍋爐沒有付大額國內碳稅」的旁證"
+        "(⚠️ 在本模型結構下,而本模型的時點已知是錯的 → 不可當結論引用)。"
     )
 
     # ── ⑦ 最小負載補得了多少?(供熱季,機組持續併聯運轉才成立)────────────

@@ -122,8 +122,9 @@ ARCHETYPES = {
     "biomass": dict(ef_chp=0.0, ef_pb=0.20),  # 生質熱電(EU ETS 零碳)+ 天然氣尖峰鍋爐
     "coal": dict(ef_chp=0.34, ef_pb=0.20),  # 燃煤熱電;DK1 2025 仍佔 27.8%
     # 垃圾焚化:**燃料價是負的**(收處理費),用 assumptions.waste_fuel_price_eur_mwh()。
-    # ⚠️ 排放因子仍是量級值,而且與 THETA_WASTE 有**重複計入**的風險:
-    #    PHI_GATE 那筆處理費已內含 ARC 自己應繳的垃圾稅費。
+    # ⚠️ 排放因子仍是量級值。✅ **與 φ 重複計入的疑慮 2026-08-14 起消失**:
+    #    稅已拆成 θ_f(掛燃料)與 θ_h(掛熱),而 φ 掛燃料 → 不同變數,不會靜默抵消。
+    #    🔴 `ef_chp=0` 讓垃圾**自動免除 θ_f**,稅全部由 θ_h 承擔 —— 這是刻意的,見 assumptions。
     # ✅ 2026-08-11 起可跑:目錄的 WtE 全是背壓式,而 `solve()` 已支援(back_pressure=True)。
     "waste": dict(ef_chp=0.0, ef_pb=0.20),
 }
@@ -169,6 +170,30 @@ def dea_plant(arch: str = "wood_chips", est: str = "ctrl", **over) -> Plant:
     return Plant(**{**p, **ARCHETYPES[_ARCH_FUEL[arch]], **over})
 
 
+def dk2_plant(key: str, **over) -> Plant:
+    """從 `dk2_fleet` 的真實機組建一個 `Plant`(2026-08-14 新增)。
+
+    先前 ARC/ARGO 的結果都是臨時腳本跑的,沒有進 repo → 每次要重建、而且無法防迴歸。
+
+    只支援 `dk2_fleet.runnable()` 裡的機組(目前 ARC / ARGO):
+      · 熱容量 `mw_th` 用 varmelast 真值(熱網營運者自己講的,對 MW_th 是最高權威)
+      · 電容量用 `dk2_fleet.derived_mw_e()` 從 `P_max = Cb·Q_max` 反推(**只對背壓式成立**)
+      · 其餘技術參數走 DEA 的 `waste` 原型
+
+    ⚠️ 這是**單機組**,不是整個熱網:餵它 DK2 全系統熱需求會讓尖峰鍋爐扛掉絕大部分。
+    """
+    import dk2_fleet as F
+
+    v = F.FLEET[key]
+    if v.get("blocked_by"):
+        raise ValueError(f"{key} 目前跑不了:{v['blocked_by']}")
+    assert v["fuel"] == "waste", (
+        f"dk2_plant 目前只支援垃圾背壓機組,{key} 是 {v['fuel']}"
+    )
+    cb = dea_plant("waste", p_max=1.0).cb
+    return dea_plant("waste", p_max=F.derived_mw_e(key, cb), **over)
+
+
 def cop_from_temp(temp, cop_ref: float = None, t_ref: float = 7.0) -> np.ndarray:
     """熱泵 COP 隨外氣溫下降 —— **這是熱側的關鍵物理耦合**。
 
@@ -192,10 +217,24 @@ def cop_from_temp(temp, cop_ref: float = None, t_ref: float = 7.0) -> np.ndarray
     return cop_ref * carnot / carnot_ref
 
 
-def _cost_coeffs(pl, p, fp, fpb, cp, c_hp, tau=0.0, kappa=0.0, theta=0.0) -> dict:
+def _cost_coeffs(
+    pl, p, fp, fpb, cp, c_hp, tau=0.0, kappa=0.0, theta_f=0.0, theta_h=0.0
+) -> dict:
     """**整個模型的成本函數就是這裡的一條式子**,涵蓋全部機組,靠參數歸零切換。
 
-        c = (p_fuel + ef·p_CO2 + θ)·F  +  vom_e·P⁺ + vom_th·Q  −  p_el·P  +  (τ+κ)·P⁻
+        c = (p_fuel + ef·(p_CO2 + θ_f))·F + θ_h·Q
+            + vom_e·P⁺ + vom_th·Q  −  p_el·P  +  (τ+κ)·P⁻
+
+    🔴 **2026-08-14:原本單一個 θ 拆成兩個,而且其中一個換了變數。**
+    舊式是 `(p_fuel + ef·p_CO2 + θ)·F`(θ 未被 ef 乘,量綱其實是 EUR/MWh_fuel,
+    與 `assumptions` 註記的 EUR/tCO2 不一致 —— 只因為值是 0 才沒炸)。現在:
+
+      θ_f  EUR/tCO2   掛 **F**,進 ef 括號內   → 天然氣(靠 ef_pb=0.20 生效)
+      θ_h  EUR/MWh_th 掛 **Q**(只掛 Qc)      → 垃圾焚化(三項丹麥國內稅全部按熱計徵)
+
+    **θ_h 只掛 Qc,不掛 Qpb/Qe/Qh**:它是垃圾焚化機組自己的熱側稅,
+    尖峰鍋爐與 power-to-heat 不適用(那些走 θ_f 或不課)。
+    完整的法源與「為什麼掛錯變數不能靠掃描救」寫在 `assumptions.THETA_HEAT_WASTE`。
 
     回傳 {變數區塊: 逐時成本係數}。**刻意不為機組類型開分支** —— 生質/垃圾/電鍋爐/熱泵
     的差別全部表現成參數,而不是 if。
@@ -210,18 +249,23 @@ def _cost_coeffs(pl, p, fp, fpb, cp, c_hp, tau=0.0, kappa=0.0, theta=0.0) -> dic
         Qh     0              −1/COP_t          vom_hp    熱泵:同上,但 el 隨氣溫變
         Qpb    1/η_pb          0                vom_pb    尖峰鍋爐:燒燃料不發電
 
-    三種燃料怎麼靠參數切換(不是靠 if):
-      · 生質 CHP  θ 不適用(傳 0);P⁻ 恆為 0(沒有買電的區塊)
-      · 垃圾 CHP  `fuel_price` 傳**負值**(= −φ 處理費換算,見 assumptions);θ 適用
+    燃料別怎麼靠參數切換(不是靠 if):
+      · 生質 CHP     ef_chp = 0 → θ_f 自動失效;θ_h = 0;P⁻ 恆為 0(沒有買電的區塊)
+      · 垃圾 CHP     `fuel_price` 傳**負值**(= −φ 處理費換算);ef_chp = 0 → **θ_f 自動失效**;
+                     稅由 **θ_h 掛在 Qc** 上
+      · 尖峰燃氣鍋爐 ef_pb = 0.20 → **θ_f 自動生效**;θ_h 不適用
       · 電鍋爐/熱泵  fuel_per_out = 0 → 燃料項整條消失;el < 0 → (τ+κ) 才生效
 
-    ⚠️ θ 只掛在 CHP 的燃料項:尖峰鍋爐燒的是天然氣,不是垃圾。
+    🔑 **θ_f 同時傳給 CHP 與尖峰鍋爐是對的,不需要分支** —— 它被 `ef` 乘,
+       而 `ef_chp`/`ef_pb` 本來就分開設,所以「誰付這筆稅」由排放因子自己決定。
     """
 
-    def coeff(fuel_price, ef, th, fuel_per_out, el, vom):
+    def coeff(fuel_price, ef, fuel_per_out, el, vom, th_heat=0.0):
         el = np.asarray(el, float)
         return (
-            (fuel_price + ef * cp + th) * fuel_per_out  # 燃料 + 碳 + 垃圾稅
+            # 燃料 + (ETS 碳價 + 國內燃料碳稅 θ_f);θ_f 靠 ef 歸零自動切換
+            (fuel_price + ef * (cp + theta_f)) * fuel_per_out
+            + th_heat  # θ_h 熱側稅楔:掛在**熱出力**上,不是燃料
             + vom  # 變動 O&M
             - p * el  # 賣電收入(el<0 時自動變成買電支出)
             + (tau + kappa) * np.maximum(-el, 0.0)  # 只有買電才付的稅費與網費
@@ -229,11 +273,12 @@ def _cost_coeffs(pl, p, fp, fpb, cp, c_hp, tau=0.0, kappa=0.0, theta=0.0) -> dic
 
     one = np.ones_like(p)
     return {
-        "P": coeff(fp, pl.ef_chp, theta, 1.0 / pl.eta_el, one, pl.vom_e),
-        "Qc": coeff(fp, pl.ef_chp, theta, pl.cv / pl.eta_el, 0.0 * one, pl.vom_th),
-        "Qe": coeff(0.0, 0.0, 0.0, 0.0, -one / pl.eta_eb, pl.vom_eb),
-        "Qh": coeff(0.0, 0.0, 0.0, 0.0, -one / c_hp, pl.vom_hp),
-        "Qpb": coeff(fpb, pl.ef_pb, 0.0, 1.0 / pl.eta_pb, 0.0 * one, pl.vom_pb),
+        "P": coeff(fp, pl.ef_chp, 1.0 / pl.eta_el, one, pl.vom_e),
+        # 🔴 θ_h 只掛這裡:垃圾焚化三稅按**交付/產出的熱**計徵
+        "Qc": coeff(fp, pl.ef_chp, pl.cv / pl.eta_el, 0.0 * one, pl.vom_th, theta_h),
+        "Qe": coeff(0.0, 0.0, 0.0, -one / pl.eta_eb, pl.vom_eb),
+        "Qh": coeff(0.0, 0.0, 0.0, -one / c_hp, pl.vom_hp),
+        "Qpb": coeff(fpb, pl.ef_pb, 1.0 / pl.eta_pb, 0.0 * one, pl.vom_pb),
     }
 
 
@@ -248,7 +293,8 @@ def solve(
     s_init: float = 0.0,
     tau: float = None,
     kappa: float = None,
-    theta: float = None,
+    theta_f: float = None,
+    theta_h: float = None,
     committed: bool = False,
 ):
     """解一段期間的最適排程。回傳 dict:各項出力陣列 + 利潤(€)。
@@ -258,9 +304,14 @@ def solve(
     fuel_price   CHP 燃料價 €/MWh_fuel(純量或逐時);fuel_price_pb 預設同 CHP
     cop          熱泵 COP(純量或逐時);None → 用 plant.cop_ref
 
-    tau/kappa/theta  電力稅、網路關稅、垃圾 CO2 稅;None → 用 assumptions.py 的佔位值(0)。
+    tau/kappa        電力稅、網路關稅 [EUR/MWh_e],掛在**買電**上。
+    theta_f          燃料側國內碳稅 [EUR/tCO2],掛在 **F**(進 ef 括號內)。
+    theta_h          垃圾焚化熱側稅楔 [EUR/MWh_th],掛在 **Qc**。
+                     四個都是 None → 用 assumptions.py 的佔位值(全 0)。
                      要測「網路關稅是不是 P2H 之謎的答案」就傳
                      `kappa=assumptions.p2h_tariff_eur_mwh_e()`。
+    ⚠️ 2026-08-14 起舊的單一 `theta=` 參數已移除(它掛在 F 上,而垃圾三稅按熱計徵)。
+       **刻意不留相容別名** —— 留了會讓舊呼叫端默默套用錯的變數。
 
     committed    機組**持續併聯運轉**(供熱季的常態)→ 啟用最小負載下界。
                  🔑 嚴格的最小負載是「不是關機,就是 ≥ min_load」= 需要整數變數。
@@ -283,7 +334,8 @@ def solve(
     A.warn_placeholders()  # 每個 process 印一次:哪些成本被歸零了
     tau = A.TAU_EL if tau is None else tau
     kappa = A.KAPPA_NET if kappa is None else kappa
-    theta = A.THETA_WASTE if theta is None else theta
+    theta_f = A.THETA_FUEL_GAS if theta_f is None else theta_f
+    theta_h = A.THETA_HEAT_WASTE if theta_h is None else theta_h
     pl = plant or Plant()
     p = np.asarray(price, float)
     d = np.asarray(heat_demand, float)
@@ -320,7 +372,8 @@ def solve(
     }
 
     c = np.zeros(n)
-    for k, v in _cost_coeffs(pl, p, fp, fpb, cp, c_hp, tau, kappa, theta).items():
+    coeffs = _cost_coeffs(pl, p, fp, fpb, cp, c_hp, tau, kappa, theta_f, theta_h)
+    for k, v in coeffs.items():
         c[sl[k]] = v
 
     I = sp.eye(T, format="csr")  # noqa: E741 — 單位矩陣,數學慣例就叫 I
@@ -554,6 +607,56 @@ def demo() -> None:
             f"成本函數重構改變了 {k} 的係數:{got[k][:3]} vs 舊 {want_v[:3]}"
         )
     print("  成本函數 ok: 單一式子在 vom=0、稅費=0 時逐項還原重構前的五行係數")
+
+    # ⑥d 🔴 **θ 拆成 θ_f / θ_h 的接線檢查**(2026-08-14)。三件事要鎖住:
+    #     ① 兩個都 0 時逐格等同(零變更 —— 這是「測試 1」)
+    #     ② θ_f 掛 F 且**被 ef 乘** → 垃圾/生質(ef_chp=0)自動免疫,氣鍋爐(ef_pb>0)會被課
+    #     ③ θ_h 掛 **Qc**,只影響 Qc,而且**不隨 ef 變**(它不是碳稅是熱側稅楔)
+    base = _cost_coeffs(
+        z, p2, np.full(T2, fp2), np.full(T2, fp2), np.full(T2, cp2), cop2
+    )
+    zero = _cost_coeffs(
+        z,
+        p2,
+        np.full(T2, fp2),
+        np.full(T2, fp2),
+        np.full(T2, cp2),
+        cop2,
+        theta_f=0.0,
+        theta_h=0.0,
+    )
+    for k in base:
+        assert np.allclose(base[k], zero[k], atol=1e-12), f"θ 全 0 時 {k} 應逐格不變"
+    # θ_h:只動 Qc,而且剛好加上去(量綱 EUR/MWh_th,不經過任何效率或 ef)
+    th = _cost_coeffs(
+        z, p2, np.full(T2, fp2), np.full(T2, fp2), np.full(T2, cp2), cop2, theta_h=7.0
+    )
+    assert np.allclose(th["Qc"] - base["Qc"], 7.0, atol=1e-12), (
+        f"θ_h 應原樣加在 Qc 上:實得 {(th['Qc'] - base['Qc'])[:3]}"
+    )
+    for k in ("P", "Qe", "Qh", "Qpb"):
+        assert np.allclose(th[k], base[k], atol=1e-12), (
+            f"θ_h 不該碰 {k} —— 垃圾熱側稅只對焚化機組的熱出力課徵"
+        )
+    # θ_f:靠 ef 歸零切換。z 是木片(ef_chp=0)→ P/Qc 必須完全不動;ef_pb=0.20 → Qpb 必須動
+    tf = _cost_coeffs(
+        z, p2, np.full(T2, fp2), np.full(T2, fp2), np.full(T2, cp2), cop2, theta_f=100.0
+    )
+    assert z.ef_chp == 0.0 and z.ef_pb > 0.0, (
+        "這個 self-check 預設 z 是生質 CHP + 氣鍋爐"
+    )
+    for k in ("P", "Qc"):
+        assert np.allclose(tf[k], base[k], atol=1e-12), (
+            f"ef_chp=0 的機組不該被 θ_f 課到({k}) —— 若動了表示 θ_f 沒進 ef 括號內"
+        )
+    want_pb = 100.0 * z.ef_pb / z.eta_pb
+    assert np.allclose(tf["Qpb"] - base["Qpb"], want_pb, atol=1e-9), (
+        f"θ_f 對氣鍋爐應是 θ_f·ef_pb/η_pb = {want_pb:.3f},實得 {(tf['Qpb'] - base['Qpb'])[0]:.3f}"
+    )
+    print(
+        f"  θ 接線 ok: θ_f 掛 F 且被 ef 乘(ef=0 的機組自動免疫、氣鍋爐 +{want_pb:.2f} EUR/MWh_th)、"
+        "θ_h 原樣掛 Qc 且不碰其他區塊;兩者皆 0 時逐格等同重構前"
+    )
 
     # ⑦ Plant 的預設值必須真的等於目錄值 —— 上面那些數字是手抄的,這行防止它們默默漂掉。
     #    用**相對**容差 1e-3:上面的字面值是為了可讀性四捨五入過的(例如 vom_e 2.765
