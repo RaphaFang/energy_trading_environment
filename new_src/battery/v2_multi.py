@@ -44,7 +44,9 @@ def _per_agent(spec, n, default):
     return [arr] * n
 
 
-def solve_day(price, weights, lam, rounds=15, tol=1e-3, belief=None, br=None, impact=None):
+def solve_day(
+    price, weights, lam, rounds=15, tol=1e-3, belief=None, br=None, impact=None
+):
     """一週的均衡:輪流(Gauss-Seidel)最佳反應。weights[i] = 玩家 i 的體量。
     回傳每家「每單位體量」的排程 C/D、出清價、用了幾回合。
 
@@ -63,11 +65,15 @@ def solve_day(price, weights, lam, rounds=15, tol=1e-3, belief=None, br=None, im
     br(seen, lam_wi) -> (c, d)。預設 price-taker(吃 perfect 的 LP、無視自己的
     λ·w_i);v3 傳 Cournot 版進來內化自身衝擊。
 
+    **lam 可以是純量,也可以是每小時一個值的 1-D 陣列**(全是逐元素運算)。搭配
+    `impact=fringe.nonlinear_impact(x, fr)` 時應同時傳 `lam=fringe.lambda_at(x, fr)`,
+    這樣「出清價走真曲線」與「Cournot 自制強度」才用同一條曲線的資訊(見 v3_cournot)。
+
     impact:價格衝擊怎麼算,**開關**,預設 None → 線性 `lam·net`(v2.1/v2.2 原本的
     公式,真實價 + λ×淨量)。要換成非線性(車隊淨量沿曲線跑遠,GW 級才需要),
-    傳一個 `net(MW 陣列) -> Δp(€/MWh 陣列)` 的函式,例如 `agents/fringe.py` 的
+    傳一個 `net(MW 陣列) -> Δp(€/MWh 陣列)` 的函式,例如 `battery/fringe.py` 的
     `nonlinear_impact(x, fringe)`(用真實 fringe 曲線 p₀(x+net)−p₀(x) 取代常數斜率,
-    見 MULTI_AGENT_MARKET.md §3.9)。**不傳就完全是舊行為**——v3/v4/hetero/scales/
+    見 BATTERY_TRACK.md §1(λ 定案))。**不傳就完全是舊行為**——v3/v4/hetero/scales/
     compare.py 都沒傳這個參數,不受影響。⚠️ 只換了出清價這一層;br=cournot_br 的
     自制強度(lam_wi)還是常數,沒有跟著 impact 換成局部曲率,兩者同時用時大玩家
     的自制量會算錯(見 fringe.py 模組 docstring)。"""
@@ -91,7 +97,9 @@ def solve_day(price, weights, lam, rounds=15, tol=1e-3, belief=None, br=None, im
         if change < tol:  # 沒人想再改 → 收斂
             used = r + 1
             break
-    cleared = price + impact_fn((w[:, None] * (C - D)).sum(0))  # 出清價(真實價+全體衝擊)
+    cleared = price + impact_fn(
+        (w[:, None] * (C - D)).sum(0)
+    )  # 出清價(真實價+全體衝擊)
     return C, D, cleared, used
 
 
@@ -167,12 +175,12 @@ def _demo_heterogeneous(p):
 
 
 def _demo_nonlinear_impact(p):
-    """`impact=` 開關的 self-check(見 `agents/fringe.py` 的 `nonlinear_impact`)。
+    """`impact=` 開關的 self-check(見 `battery/fringe.py` 的 `nonlinear_impact`)。
     本地 import fringe(需要 sklearn),不用這個開關的呼叫端不會被迫裝它。
 
     驗兩件事:①車隊小、x 落在曲線平坦段時,非線性應該幾乎等於線性(近似沒被破壞,
     這是開關能安全預設關閉的理由);②車隊大到把 x 推進曲線陡段時,非線性衝擊要比
-    常數線性外推更大(這正是要開這個開關的理由,見 MULTI_AGENT_MARKET.md §3.9)。"""
+    常數線性外推更大(這正是要開這個開關的理由,見 BATTERY_TRACK.md §1(λ 定案))。"""
     import pandas as pd
 
     sys.path.insert(0, os.path.dirname(__file__))

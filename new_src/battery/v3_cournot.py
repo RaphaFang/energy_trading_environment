@@ -24,23 +24,30 @@ from v2_multi import fleet_revenue, solve_day  # noqa: E402
 
 
 def cournot_br(seen, lam_wi, iters=100):
-    """Cournot 最佳反應:max Σ seen·(d−c) − lam_wi·Σ(c−d)²(lam_wi=λ·自己體量)。
+    """Cournot 最佳反應:max Σ seen·(d−c) − Σ lam_wi·(c−d)²(lam_wi=λ·自己體量)。
     多的二次項 = 內化「自己一動就推移出清價」→ 大玩家自制,不再壓垮自己的價。
     可行集 == perfect 的 LP polytope,所以用 Frank-Wolfe:線性化後的 oracle 剛好是
     perfect(含自身衝擊的邊際價),閉式線搜 → 不必裝 QP solver。lam_wi=0 就退回純 LP。
 
+    **lam_wi 可以是純量,也可以是每小時一個值的向量**(長度同 seen)。給向量時就是
+    「自制強度隨當下 fringe 陡峭度變」——搭配 `impact=fringe.nonlinear_impact(...)`
+    時必須給向量(用 `fringe.lambda_at(x, fr)·w_i`),否則出清價走真曲線、自制卻還按
+    常數斜率算,大玩家會在陡段自制不足、在平段過度自制。走 `solve_day(lam=向量)` 即可。
+
     簽名 (seen, lam_wi) 對齊 solve_day 的 br= → 可直接 solve_day(..., br=cournot_br)。"""
     c, d = perfect(seen)  # 從 price-taker LP 解起步
-    if lam_wi <= 0:
+    lam_wi = np.asarray(lam_wi, float)
+    if np.all(lam_wi <= 0):
         return c, d
     for _ in range(iters):
         u = c - d
         vc, vd = perfect(seen + 2 * lam_wi * u)  # 邊際價 = 平均價 + 自身衝擊的邊際
         dc, dd = vc - c, vd - d
         delta = dc - dd
-        Cq = lam_wi * float(delta @ delta)  # 1D 二次係數(−t²)
-        Bq = -float(seen @ delta) - 2 * lam_wi * float(
-            u @ delta
+        # 逐時加權(純量時等價於原本的 lam·δ'δ):f(t)=const+Bq·t−Cq·t²
+        Cq = float(np.sum(lam_wi * delta * delta))  # 1D 二次係數(−t²)
+        Bq = -float(seen @ delta) - 2 * float(
+            np.sum(lam_wi * u * delta)
         )  # 頂點方向上升量=FW gap
         if (
             Bq <= 1e-7
@@ -97,6 +104,18 @@ def demo():
     print(
         f"  v3 ok: Cournot λ=0≡LP;λ=8 大玩家交易量 {vol_big_v:.2f}→{vol_big_c:.2f}(自制)"
     )
+    # 向量 lam_wi:填同一個常數必須與純量逐格相同(換成向量不能悄悄改掉舊行為);
+    # 而「陡段給大 λ」的向量應該讓該處自制更強(交易量更小)。
+    cs, ds = cournot_br(pf, 8.0)
+    cv, dv = cournot_br(pf, np.full(len(pf), 8.0))
+    assert np.allclose(cs, cv) and np.allclose(ds, dv), "向量 lam_wi 填常數應等同純量"
+    lam_vec = np.where(pf > 15, 30.0, 1.0)  # 尖峰時段特別陡
+    cq, dq = cournot_br(pf, lam_vec)
+    peak = pf > 15
+    assert np.abs(cq - dq)[peak].sum() < np.abs(cs - ds)[peak].sum(), (
+        "尖峰給大 λ 時,該時段的自制應比常數 λ 更強"
+    )
+    print("  向量 λ ok: 填常數 ≡ 純量;陡段給大 λ → 該時段自制更強")
     # 三尺階梯:聯合利潤必須 0 ≤ C(Walrasian 競爭) ≤ N(Nash) ≤ M(卡特爾)。
     # 用大體量(GW 級 = 大 λ·w)才驗得到,順便守住「競爭不倒賠」——舊 naive price-taker 會。
     wm = [15.0, 10.0, 8.0, 7.0]  # ~40MW 隊,λ·ΣW 夠大讓市場力咬得動
