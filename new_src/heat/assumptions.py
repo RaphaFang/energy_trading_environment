@@ -133,11 +133,38 @@ KAPPA_SENSITIVITY = {
 
 WASTE_V_FORMEL = 1.20
 """v-formel:每 1 GJ_heat 歸屬 `1/1.20 = 0.833` GJ_fuel,其餘算在發電上(**發電免徵**)。"""
-WASTE_EF_STATUTORY_T_PER_GJ = 0.02834
-"""**法定標準排放係數 28.34 kg CO2/GJ_fuel**。
+WASTE_EF_STATUTORY_T_PER_GJ = 0.0370
+"""**配額涵蓋機組的法定備用排放係數 37.0 kg CO2/GJ_fuel**(2026-08-15 查證後改用)。
 
-🔴 **不可用 `ef_affald = 42.5`** —— 那是 DCE 的全國實測平均、含生物碳,
-與稅法的法定標準值是**不同世界的數字**,不可互換。
+🔴 **稅法有三個級距,選錯級距比選錯數值嚴重**(Skat 法律指引 E.A.4.5.7.3):
+
+| 情況                                   | 該用的係數              |
+| -------------------------------------- | ----------------------- |
+| **非**配額涵蓋機組                     | 28.34 kg/GJ(法定標準)  |
+| **配額涵蓋**、知道自身實測係數         | **自身實測值**          |
+| **配額涵蓋**、不知道自身實測係數       | **37.0 kg/GJ** ← 本模型 |
+| 配額涵蓋、用煙囪法(skorstensmetoden)  | 直接量測                |
+
+**ARC/ARGO 名目熱輸入遠超 20 MW → 2013-01-01 起就是配額涵蓋機組**
+(Lov nr. 1353 af 21/12/2012)→ **28.34 那一列根本不適用於它們**。
+舊值 0.02834 是套錯級距,2026-08-15 改為 0.0370。
+
+🔴 **`STATUS.md` §9.2 引的「法定標準 0.070 tCO2/GJ」是抄錯的** —— 查證後那個 0.070
+是 Skat **範例裡某座假想配額廠的「自身實測係數」**(原文 "verificeret emissionsfaktor
+70 kg CO2/GJ"),**不是任何一個法定稅率**。§9.2b 那個衝突因此結案。
+
+🔴 **仍不可用 `ef_affald = 42.5`** —— 那是能源署《Standardfaktorer for brændværdier
+og CO2》的**物理**排放係數(總量 101.7 ton CO2/TJ × 非生物分解份額 41.79% = 42.50),
+是排放清冊用的,與稅法的級距是**不同世界的數字**。
+📌 順序值得記住:**稅法級距(28.34 / 37.0)都低於物理實測值(42.5)** —— 稅法的標準值
+是協商出來的保守值,不是物理量。
+
+⚠️ **理想值仍然是 ARC/ARGO 各自的實測係數,我們沒有。** 粗略交叉驗證:ARC 自己公布
+煙囪年排 ≈ 560,000 t CO2、年處理量 ≈ 560,000–600,000 t 垃圾,套 DEA 的非生物份額
+41.79% → 隱含化石係數約 **35 kg/GJ**,與 37.0 同量級(⚠️ 這是我用公開數字反推的,
+不是 ARC 公布的係數,**不可引用**)。
+⚠️ 配額涵蓋機組的供熱用 CO2 稅**可部分退還**(2025 為 10%)而這裡沒扣
+→ **現行 θ_h 是上界**,方向對結論有利。
 """
 
 WASTE_TAX_DKK_GJ = {
@@ -272,6 +299,67 @@ BIOMASS_PARAMS = {
 `an vaerk` 是分散式/純熱廠 —— DK2 的 Amager/Avedøre 是中央熱電廠,不要拿錯。"""
 
 
+# ══════════════════════════════════════════════════════════════════════
+#  🟡 生質價的**假定值** —— 2026-08-15 使用者授權,為了讓機組先活過來
+# ══════════════════════════════════════════════════════════════════════
+
+BIOMASS_ASSUMED_EUR_MWH = {
+    #  年: {燃料: (丹麥海關進口單價, 瑞典熱廠到廠價)}  [EUR/MWh_fuel]
+    2021: {"wood_chips": (23.3, 18.9), "wood_pellets": (29.6, 31.9)},
+    2022: {"wood_chips": (30.6, 19.6), "wood_pellets": (44.3, 33.1)},
+    2023: {"wood_chips": (37.7, 26.3), "wood_pellets": (50.3, 41.5)},
+    2024: {"wood_chips": (40.2, 32.2), "wood_pellets": (67.9, 48.8)},
+    2025: {"wood_chips": (38.8, 34.0), "wood_pellets": (42.1, 46.1)},
+}
+"""🟡 **假定值,不是公布的燃料價** —— 2021–2024 讓 Amager/Avedøre 先跑起來用的。
+
+**兩個數字都是從 `new_data/fuel/` 的原始資料算出來的**(`biomass_prices.py` 的
+`demo()` 每次重算),不是編的。但**兩者的口徑都不完全對**,壞的方式相反:
+
+| | 國家 | 商品 | 價格類型 |
+| --- | --- | --- | --- |
+| 丹麥海關(第一個數) | ✅ 對 | 🔴 錯 —— 巴西尤加利佔 21.5% 混在裡面 | 進口 CIF |
+| 瑞典熱廠(第二個數) | 🔴 錯 —— 瑞典只佔丹麥木片進口 4.5% | ✅ 對 —— 林地木片 | **到廠採購價** |
+
+🔴 **所以這裡存的是「區間的兩端」,不是「一個對的值」。**
+`biomass_fuel_price_assumed()` 預設回丹麥那端,但**論文結論一定要掃兩端**
+—— 這是本專案 2026-08-13 已經用過的做法(燃料價掃描證明時點結論在整個區間都成立)。
+⚠️ 木片兩端在 **2022 差 56%**,而 2022 是能源危機年。
+
+📌 **口徑真正正確的來源存在但被鎖著**:Dansk Fjernvarme《Brændselsprisstatistik》
+(會員熱廠實際採購價)。**待辦:寫信要研究用途的存取權。** 見 `DATA.md` §8.5。
+"""
+
+ASSUMED: list[str] = ["BIOMASS_ASSUMED_EUR_MWH"]
+"""**有值、但值是假定的**假設 —— 與 `PLACEHOLDERS`(值是 0)性質不同,所以分開列。
+
+`warn_placeholders()` 每次跑都會把這串印出來。**這串不空,就代表模型的某個維度
+是靠假定撐著的,結果不可以當真值引用。**
+"""
+
+
+def biomass_fuel_price_assumed(
+    year: int, kind: str = "wood_chips", end: str = "dk"
+) -> float:
+    """🟡 生質燃料價,**2021–2024 回假定值**(而不是像下面那支一樣拋錯)。
+
+    `end="dk"` 回丹麥海關那端、`end="se"` 回瑞典熱廠那端 —— **掃描時兩端都要跑**。
+    2025 以後直接走 SØB25 的公布值(`biomass_fuel_price_eur_mwh`)。
+
+    🔴 **這支存在的唯一理由是「先讓機組活過來」**(2026-08-15 使用者授權)。
+    ⚠️ **要引用絕對水準的結論時不可以用它** —— 用它的結果一律要標明是假定值,
+    而且要報兩端。真值的路徑見 `BIOMASS_ASSUMED_EUR_MWH` 的 docstring。
+
+    ⚠️ **刻意跟 `biomass_fuel_price_eur_mwh()` 分開命名**:那支對 <2025 拋 `KeyError`
+    的行為**保留不動**,因為它擋的是「有人偷偷用單一值回填」。呼叫端要用假定值,
+    就得明確寫出這個函式名 —— **不會有人不小心拿到假定值**。
+    """
+    if year in BIOMASS_ASSUMED_EUR_MWH and kind in BIOMASS_ASSUMED_EUR_MWH[year]:
+        dk, se = BIOMASS_ASSUMED_EUR_MWH[year][kind]
+        return dk if end == "dk" else se
+    return biomass_fuel_price_eur_mwh(year, kind)  # 落回公布值(或它的 KeyError)
+
+
 def biomass_fuel_price_eur_mwh(year: int, kind: str = "wood_chips") -> float:
     """SØB25 的生質燃料價 [EUR/MWh_fuel]。**2025 以前直接拋錯,不回填。**
 
@@ -312,11 +400,20 @@ def warn_placeholders(force: bool = False) -> list[str]:
     global _warned
     g = globals()
     zeroed = [n for n in PLACEHOLDERS if g[n] == 0.0]
-    if zeroed and (force or not _warned):
-        _warned = True
+    first = force or not _warned
+    if zeroed and first:
         print(
             f"  ⚠️ 佔位符仍為 0(結果在這些維度上是「無此成本」的反事實):{', '.join(zeroed)}"
         )
+    # 🟡 **有值但值是假定的** —— 與「值是 0」性質不同,一樣要每次叫出來
+    if ASSUMED and first:
+        print(
+            f"  🟡 **假定值**(有值但不是公布真值,結果不可當水準引用):{', '.join(ASSUMED)}"
+            "\n     生質價 2021–2024 用的是進口單價/瑞典到廠價當兩端 —— **結論要掃兩端**,"
+            "真值待 Dansk Fjernvarme(見 DATA.md §8.5)"
+        )
+    if first:
+        _warned = True
     return zeroed
 
 
@@ -370,19 +467,44 @@ def demo() -> None:
     # ── θ_h:兩筆稅要能從公布值合成,而且 2025/2026 必須是窗口低點 ────────
     for yr in WASTE_TAX_DKK_GJ:
         a, c = WASTE_TAX_DKK_GJ[yr]
-        assert abs(waste_heat_tax_dkk_gj(yr) - (a + c * 0.02834 / 1.20)) < 1e-9
+        assert (
+            abs(
+                waste_heat_tax_dkk_gj(yr)
+                - (a + c * WASTE_EF_STATUTORY_T_PER_GJ / WASTE_V_FORMEL)
+            )
+            < 1e-9
+        )
     lo, hi = THETA_HEAT_WASTE_LOW, THETA_HEAT_WASTE_HIGH
     assert lo < hi, f"θ_h 下界應小於上界:{lo:.1f} vs {hi:.1f}"
     assert all(dkk_gj_to_eur_mwh_th(v) > lo for v in WASTE_TAX_PROXY_DKK_GJ.values()), (
         "2021–2024 的代理值應**全部高於** 2026 公布值 —— 綠色稅改的淨效果是稅負下降,"
         "所以 2025/2026 是窗口低點不是代表值"
     )
+    # 🔴 排放係數的臨界值 —— 由「垃圾機組不再全開」的穿越點反推回 t/GJ_fuel。
+    #    這一條是「重新推導不抄結果」:它把 §9.2b 那個衝突量化成一個會叫的數字。
+    #    ⚠️ 穿越點是 **62–70 DKK/GJ 的區間**,不是單一的 73 ——
+    #       73 是舊格點(30 與 35 之間空著)造成的假象,見 STATUS.md §9.4。
+    #       這裡取**區間下緣 62**,assert 才是保守的。
+    a26, c26 = WASTE_TAX_DKK_GJ[2026]
+    ef_critical = (62.0 - a26) * WASTE_V_FORMEL / c26
+    assert WASTE_EF_STATUTORY_T_PER_GJ < ef_critical, (
+        f"採用的排放係數 {WASTE_EF_STATUTORY_T_PER_GJ} 已越過臨界值 {ef_critical:.4f}"
+        " —— θ_h 會落在穿越點之上,STATUS.md §9.4 整節結論要重寫"
+    )
+    assert 0.02834 < ef_critical, (
+        "非配額級距的 0.02834 也必須在臨界值之下,否則『級距選擇不影響結論』那句話要拿掉"
+    )
     print(
         f"  θ_h ok: 2025 {waste_heat_tax_dkk_gj(2025):.1f} / 2026 {waste_heat_tax_dkk_gj(2026):.1f}"
         f" DKK/GJ_heat(A 能源稅 + B CO2稅×{WASTE_EF_STATUTORY_T_PER_GJ}÷{WASTE_V_FORMEL})"
-        f"\n     → 區間 **{lo:.1f} – {hi:.1f} EUR/MWh_th**;2021–2024 只有代理值"
+        f"\n     → 採用 **{lo:.2f}** EUR/MWh_th(上界 {hi:.1f} 跑敏感度,已壓力測到 34)"
+        f";2021–2024 只有代理值"
         f"({', '.join(f'{k}:{dkk_gj_to_eur_mwh_th(v):.1f}' for k, v in WASTE_TAX_PROXY_DKK_GJ.items())})"
         "\n     ⚠️ 代理值不可引用為稅率事實;**不要把 2026 的值鋪滿 2021–2024**"
+        f"\n     ✅ 排放係數已結案(2026-08-15):用 **{WASTE_EF_STATUTORY_T_PER_GJ}**"
+        " = 配額涵蓋機組的法定備用值(ARC/ARGO 是配額機組,28.34 那列不適用);"
+        f"臨界值 **{ef_critical:.4f}**(穿越點下緣 62 反推)"
+        "\n        §9.2 那個 0.070 查證為 Skat 範例裡某假想廠的自身實測值,**不是稅率**"
     )
     # 生質價:2025 起有、2025 以前**必須拋錯**(這一條鎖住「不准回填」)
     import os
