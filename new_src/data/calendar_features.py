@@ -73,7 +73,11 @@ def build(start: str, end: str, area: str) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    START, END = "2019-01-01", "2026-07-08"
+    import sys
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from window import END, START, paths_for, retire_superseded
+
     out_dir = Path("new_data/calendar")
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -83,8 +87,9 @@ if __name__ == "__main__":
         jun = d[d["month"] == 6]["daylight_hours"].mean()
         dec = d[d["month"] == 12]["daylight_hours"].mean()
         assert jun > dec + 5, "daylight seasonality wrong"
-        path = out_dir / f"calendar_{area.lower()}_{START}_{END}.parquet"
+        path, _old = paths_for(out_dir, f"calendar_{area.lower()}")
         d.to_parquet(path, index=False, engine="pyarrow", compression="snappy")
+        retire_superseded(path, _old, "timestamp_utc")
         print(
             f"✓ {area}: {len(d)} rows  daylight Jun={jun:.1f}h Dec={dec:.1f}h  "
             f"holidays={d['is_holiday'].sum() // 24} days  → {path}"

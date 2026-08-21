@@ -26,17 +26,21 @@ def fetch(start: str, end: str, area: str) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
+    import sys
     from pathlib import Path
 
-    START, END = "2019-01-01", "2026-07-08"
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+    from window import END, START, paths_for, retire_superseded
     out_dir = Path("new_data/forecast")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for area in ("DK1", "DK2"):
         d = fetch(START, END, area)
         assert d["ForecastDayAhead"].notna().any(), f"{area}: no day-ahead data"
-        path = out_dir / f"forecast_{area.lower()}_{START}_{END}.parquet"
+        path, _old = paths_for(out_dir, f"forecast_{area.lower()}")
         d.to_parquet(path, index=False, engine="pyarrow", compression="snappy")
+        retire_superseded(path, _old, "HourUTC")
         types = sorted(d["ForecastType"].unique())
         print(
             f"✓ {area}: {len(d)} rows  {d['HourUTC'].min()} → {d['HourUTC'].max()}  types={types}  → {path}"

@@ -35,7 +35,11 @@ import pandas as pd
 
 FUEL = Path("new_data/fuel")  # 一個商品一個 parquet,無子資料夾
 ICAP = Path("new_data/carbon_price_ICAP")  # 使用者下載的 ICAP 碳價匯出
-START, END = "2019-01-01", "2025-10-01"
+# 2026-08-21:改用共用窗口(2019 → 今天),見 new_src/data/window.py
+import sys as _sys
+
+_sys.path.insert(0, str(Path(__file__).resolve().parent))
+from window import END, START, retire_superseded  # noqa: E402
 
 # Yahoo ticker -> (檔名, 原始單位) — 檔名帶幣別,避免日後誤用
 TICKERS = {
@@ -46,7 +50,13 @@ TICKERS = {
 
 
 def _have(name: str) -> bool:
-    return bool(glob.glob(str(FUEL / f"{name}_*.parquet")))
+    """🔴 只看**這次窗口**的檔存不存在 —— 舊窗口的檔不算數,否則永遠不會延長。"""
+    return (FUEL / f"{name}_{START}_{END}.parquet").exists()
+
+
+def _old_files(name: str) -> list:
+    new = FUEL / f"{name}_{START}_{END}.parquet"
+    return sorted(p for p in FUEL.glob(f"{name}_*.parquet") if p != new)
 
 
 def pull_yahoo() -> None:
@@ -65,7 +75,9 @@ def pull_yahoo() -> None:
             d.columns = d.columns.get_level_values(0)
         d.index.name = "date"
         p = FUEL / f"{name}_{START}_{END}.parquet"
+        _old = _old_files(name)
         d.to_parquet(p, engine="pyarrow", compression="snappy")
+        retire_superseded(p, _old, None)
         print(
             f"✓ {name:18} [{unit:11}] {len(d):>5} 天  "
             f"{d.index.min().date()} → {d.index.max().date()}  欄位={list(d.columns)}"
@@ -122,9 +134,11 @@ def load_carbon() -> None:
         )
         s.index.name = "date"
         p = FUEL / f"eua_co2_eur_t_{START}_{END}.parquet"
+        _old = _old_files("eua_co2_eur_t")
         s.rename("Close").to_frame().to_parquet(
             p, engine="pyarrow", compression="snappy"
         )
+        retire_superseded(p, _old, None)
         print(
             f"✓ 碳價 [{Path(f).name} → 欄位 '{price_col}']: "
             f"{s.index.min().date()} → {s.index.max().date()} ({len(s)} 天) → {p}"

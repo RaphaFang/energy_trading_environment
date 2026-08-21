@@ -148,10 +148,47 @@ def main():
     g = "new_data"  # glob root; DK1+DK2 files union automatically
 
     con.execute(f"""
+        -- 🔴 電價由**兩個資料集接力**:`Elspotprices`(逐時)止於 2025-09-30 21:00 UTC,
+        --    `DayAheadPrices`(15 分鐘)從 22:00 UTC 接續(歐洲 SDAC 轉 15 分鐘 MTU)。
+        --    不接的話 `training` 右界卡在 2025-09-30 → **少掉 2025/26 那個冬天**,
+        --    而那是垃圾 CO2 稅、指定權廢除、競爭化招標生效後的**第一個冬天**。
+        --
+        -- ⚠️ **聚合一定用 AVG 不能 SUM** —— 價格是強度量。
+        --    而且在「模型的 P 一小時一個值」前提下,**算術平均正好重現收入**:
+        --    Σᵢ pᵢ·P·0.25h = P·1h·mean(pᵢ)。所以這不是近似,是收入等價價格。
+        --    🔑 代價不是精度而是**選擇權**(小時內挑貴的一刻多發的能力)→ 收入的**下界**,
+        --    對背壓機組與尖峰滿載時 ≈ 0。
+        --
+        -- 🔑 `price_is_15min_derived` 讓結構性斷點**看得見**:2025-10 之後的逐時價是
+        --    四個 15 分鐘的平均,**小時內波動被系統性抹掉** → 價格波動度、尖離峰價差、
+        --    負價小時數都會有假訊號。做那類分析時要用這個旗標排除或分段。
+        --    (glob 註記:`price_*` 不會誤抓 `price15_*`,因為 "price" 後面要接底線。)
         CREATE OR REPLACE TABLE price AS
-        SELECT HourUTC AS timestamp_utc, PriceArea AS area,
-               SpotPriceEUR, SpotPriceDKK
-        FROM read_parquet('{g}/price/price_*.parquet');
+        WITH hourly AS (
+            SELECT HourUTC AS timestamp_utc, PriceArea AS area,
+                   SpotPriceEUR, SpotPriceDKK,
+                   FALSE AS price_is_15min_derived
+            FROM read_parquet('{g}/price/price_*.parquet')
+        ),
+        q15 AS (
+            SELECT date_trunc('hour', TimeUTC) AS timestamp_utc,
+                   PriceArea AS area,
+                   AVG(DayAheadPriceEUR) AS SpotPriceEUR,
+                   AVG(DayAheadPriceDKK) AS SpotPriceDKK,
+                   TRUE AS price_is_15min_derived
+            FROM read_parquet('{g}/price/price15_*.parquet')
+            GROUP BY 1, 2
+            -- ⚠️ 只留**完整**的小時。用 >= 4 不是 = 4:秋令時轉換那一小時有 8 筆,
+            --    寫成 = 4 會把它整個丟掉。
+            HAVING COUNT(*) >= 4
+        )
+        SELECT * FROM hourly
+        UNION ALL
+        SELECT q.* FROM q15 q
+        WHERE NOT EXISTS (
+            SELECT 1 FROM hourly h
+            WHERE h.timestamp_utc = q.timestamp_utc AND h.area = q.area
+        );
 
         CREATE OR REPLACE TABLE weather AS
         SELECT hour_utc AS timestamp_utc, area,
@@ -223,7 +260,10 @@ def main():
             LAG(r.residual_mwh, 24) OVER win AS residual_lag24_mwh,
             LAG(p.SpotPriceEUR, 24)  OVER win AS price_lag24_eur,
             LAG(p.SpotPriceEUR, 168) OVER win AS price_lag168_eur,
-            p.SpotPriceEUR AS y_price_eur   -- TARGET
+            p.SpotPriceEUR AS y_price_eur,  -- TARGET
+            -- 🔑 把來源旗標帶進 view —— 不帶的話結構性斷點會靜默混進每一張圖。
+            --    做價格波動度/尖離峰價差/負價統計時,用它排除或分段。
+            COALESCE(p.price_is_15min_derived, FALSE) AS price_is_15min_derived
         FROM calendar c
         LEFT JOIN weather  w USING (timestamp_utc, area)
         LEFT JOIN forecast f USING (timestamp_utc, area)

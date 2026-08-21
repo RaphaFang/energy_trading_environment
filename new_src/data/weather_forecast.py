@@ -48,10 +48,13 @@ def fetch(start: str, end: str, area: str) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
+    import sys
     from pathlib import Path
 
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
     # historical-forecast-api goes back to ~2018 (empty by 2016); 2019 aligns with residual.
-    START, END = "2019-01-01", "2026-07-08"
+    from window import END, START, paths_for, retire_superseded
     out_dir = Path("new_data/weather")
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -61,8 +64,9 @@ if __name__ == "__main__":
         assert d["temperature_2m"].notna().any(), (
             f"{area}: all-null, source unavailable"
         )
-        path = out_dir / f"weather_{area.lower()}_{START}_{END}.parquet"
+        path, _old = paths_for(out_dir, f"weather_{area.lower()}")
         d.to_parquet(path, index=False, engine="pyarrow", compression="snappy")
+        retire_superseded(path, _old, "hour_utc")
         cov = d["temperature_2m"].notna().mean()
         print(
             f"✓ {area}: {len(d)} rows  {d['hour_utc'].min()} → {d['hour_utc'].max()}  coverage={cov:.1%}  → {path}"
