@@ -51,18 +51,33 @@ OFFERED_BORDERS = [
 ]
 
 START = pd.Timestamp("2019-10-01", tz="UTC")  # align with earliest output-forecast data
-END = pd.Timestamp("2025-10-01", tz="UTC")
+# 2026-08-21:END 改成「今天」(使用者定案的預設窗口),START 維持 2019-10-01
+# —— 那是**來源**的限制(輸出預測最早只到那裡),不是設定。
+END = pd.Timestamp(pd.Timestamp.today().strftime("%Y-%m-%d"), tz="UTC")
 
 
 def _have(name: str) -> bool:
-    """Raw file already pulled? Then skip — never re-hit the API or overwrite it."""
-    return bool(glob.glob(str(RAW / f"{name}_*.parquet")))
+    """🔴 只看**這次窗口**的檔 —— 舊窗口的檔不算數,否則窗口永遠延長不了。"""
+    return (RAW / f"{name}_{START.date()}_{END.date()}.parquet").exists()
+
+
+def _old_raw(name: str, folder) -> list:
+    new = folder / f"{name}_{START.date()}_{END.date()}.parquet"
+    return sorted(q for q in folder.glob(f"{name}_*.parquet") if q != new)
 
 
 def _save(df: pd.DataFrame, name: str, folder: Path = RAW) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     p = folder / f"{name}_{START.date()}_{END.date()}.parquet"
+    _old = _old_raw(name, folder)
     df.to_parquet(p, engine="pyarrow", compression="snappy")
+    import sys as _s
+    from pathlib import Path as _P
+
+    _s.path.insert(0, str(_P(__file__).resolve().parent))
+    from window import retire_superseded
+
+    retire_superseded(p, _old, None)
     print(f"✓ {name}: {len(df)} rows  {df.index.min()} → {df.index.max()}  → {p}")
 
 
@@ -102,7 +117,9 @@ def build_residuals() -> None:
     """DERIVED: residual = load_fc − total(wind+solar fc), per neighbour, hourly."""
     for z in (n.lower() for n in NEIGHBOURS):
         name = f"residual_{z}"
-        if glob.glob(str(DERIVED / f"{name}_*.parquet")):
+        # 🔴 只看**這次窗口**的檔 —— 用 `{name}_*` 會在 raw 已經延長之後仍然跳過,
+        #    結果 derived 停在舊窗口而 raw 到今天,兩者不同步(2026-08-21 踩到)。
+        if (DERIVED / f"{name}_{START.date()}_{END.date()}.parquet").exists():
             print(f"  · {name}: already built, skip")
             continue
         load = _read_raw(f"loadfc_{z}")

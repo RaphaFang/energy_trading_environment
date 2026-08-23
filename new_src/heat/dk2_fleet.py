@@ -41,7 +41,9 @@ FLEET = {
         commissioned_note="(M) 2019-10 出現第二台 ≥100MW(+149 MW_e)= AMV4/BIO4 併網;"
         "2020-03 掉回 1 台 149 MW_e = AMV3 燃煤除役。**兩個時點都是從逐月變動推出來的**,"
         "不是官方公告日期。",
-        blocked_by="生質燃料價缺",  # 技術上可跑,但沒有燃料價
+        # 🟡 2026-08-15 解封:生質價改用**假定值**(進口單價/瑞典到廠價當兩端),
+        #    使用者授權「先讓機組活過來」。真值仍缺 → 見 assumptions.BIOMASS_ASSUMED_EUR_MWH
+        blocked_by=None,
     ),
     "avedoere": dict(
         title="Avedøreværket (AVV1 + AVV2)",
@@ -57,7 +59,7 @@ FLEET = {
         commissioned=NOT_FOUND,
         commissioned_note="(M) 2019-01 已存在 699 MW_e/2 台 → 商轉早於資料起點 2016,"
         "查不到。2022-08 從 2 台 699 跳到 4 台 815 是**登記單位重新切分**,不是新建。",
-        blocked_by="生質燃料價缺",
+        blocked_by=None,  # 🟡 同上,用假定的生質價解封
     ),
     "koege": dict(
         title="Køge Kraftvarmeværk",
@@ -81,9 +83,18 @@ FLEET = {
         fuel="waste",
         unit_type="back_pressure",  # 目錄裡 WtE 全是背壓 → solve() 現在不適用
         mw_th=250.0,  # (V) 「Den samlede varmekapacitet er 250 MJ/s」(兩條爐線共用汽輪機)
-        mw_e=NOT_FOUND,
-        mw_e_note="(M) 落在 København 的 <100MW 那組(全市 174–232 MW_e),"
-        "與其他小機組混在一起,**切不出來**。ENTSO-E 不收。",
+        # (A) ARC 官網說 247 MW —— 與 varmelast 的 250 差 1.2%,兩個都是業者級來源,不追
+        mw_e=63.0,  # (A) ARC 官網 /amager-bakke/teknik/:「El-produktionen er på op til 63 MW」
+        mw_e_note="(A) **業者官網公布值,2026-08-15 查到**:El 63 MW / fjernvarme 247 MW,"
+        "「for hvert ton affald…2,7 MWh fjernvarme og 0,8 MWh strøm」。"
+        "🔑 **這台先前標 NOT_FOUND 是錯的** —— Amager Bakke 是知名建築,業者自己的技術頁就有。"
+        "(M) 那組 <100MW 全市合計切不出來、ENTSO-E 不收,都是真的,但**不代表查不到**。"
+        "✅ 反推法因此得到驗證:`Cb·Q = 0.28×250 = 70` vs 官網 63,**差 11%** —— "
+        "方法可用,但既然有真值就用真值。"
+        "⚠️ 官網自己有一處不一致:63/247 = 0.255,但每噸比 0.8/2.7 = 0.296。"
+        "**推測**(未證實)是 247 裡含煙氣冷凝/吸收式熱泵回收的約 32 MW ——"
+        "那塊熱不經蒸汽循環、不犧牲發電:(247−32)=215,63/215 = 0.293 ≈ 0.296 ✓。"
+        "若成立,**ARC 不是純背壓,有一塊「免費的熱」**,模型目前沒有表達。",
         commissioned=NOT_FOUND,
         commissioned_note="(M) København 的 <100MW 合計在 2019–2024 間多次跳動,"
         "但那一組混了太多機組,無法歸因到 ARC。",
@@ -160,9 +171,20 @@ def derived_mw_e(key: str, cb: float) -> float:
 def runnable() -> dict:
     """現在真的能餵進 `chp.solve()` 的機組。
 
-    2026-08-11 起 = **ARC 與 ARGO**(背壓式已實作,垃圾用處理費當負燃料價,
-    電容量由 `derived_mw_e()` 從熱容量反推)。生質三台仍卡燃料價;
-    Vestforbrænding 卡「進傳輸網的比例未知」。
+    **2026-08-15 起 = Amager / Avedøre / ARC / ARGO(4/6,約佔車隊容量 91%)。**
+
+    - ARC / ARGO:2026-08-11 背壓式實作後解封,垃圾用處理費當負燃料價,
+      電容量由 `derived_mw_e()` 從熱容量反推
+    - 🟡 **Amager / Avedøre:2026-08-15 用「假定的」生質價解封**
+      (`assumptions.BIOMASS_ASSUMED_EUR_MWH`,不是公布真值)—— 使用者授權「先讓機組活過來」
+
+    🔑 **為什麼這兩台特別重要**:它們是**唯二的抽汽式**。背壓式 `P = Cb·Q`,
+    熱定了電就定了 → **零彈性**。DK2 的彈性幾乎 100% 在 Amager 與 Avedøre 身上,
+    核心假說(「多業者的彈性在稀缺時同時消失」)**只能在它們身上檢驗**。
+
+    仍不可跑的兩台,**卡的都不是燃料價**:
+      Køge —— 機組型式與電容量都 NOT_FOUND(佔車隊容量僅 2%)
+      Vestforbrænding —— 進傳輸網的比例未知(先供自己五個市的配網,餘量才給熱網)
     """
     return {k: v for k, v in FLEET.items() if not v.get("blocked_by")}
 
@@ -171,11 +193,15 @@ def demo() -> None:
     # ① 熱容量六台都要有(這是 varmelast 自己講的,沒有理由缺)
     for k, v in FLEET.items():
         assert v["mw_th"], f"{k} 缺 mw_th,但 varmelast 的說明文字有給"
-    # ② MW_e 只有兩台查得到 —— 這個事實本身要被鎖住,免得日後被人偷偷填滿
+    # ② MW_e 有幾台查得到 —— 鎖住這件事,免得日後被人拿**全市合計**(上界)偷偷填滿。
+    #    🔑 2026-08-15 從 2 台變 3 台:ARC 的 63 MW 是**業者官網公布值**(機組級,合法),
+    #       先前標 NOT_FOUND 是漏查 —— Amager Bakke 是知名建築,技術頁就有數字。
+    #       教訓:「(M) 全市合計切不出來 + (E) ENTSO-E 不收」**不等於查不到**,還有業者官網。
     have_e = [k for k, v in FLEET.items() if v["mw_e"] is not NOT_FOUND]
-    assert set(have_e) == {"amager", "avedoere"}, (
-        f"MW_e 應該只有 Amager 與 Avedøre 查得到,現在是 {have_e} —— "
-        "若有人補了值,請確認來源是機組級而不是全市合計(那只是上界)"
+    assert set(have_e) == {"amager", "avedoere", "arc"}, (
+        f"MW_e 應該只有 Amager / Avedøre / ARC 查得到,現在是 {have_e} —— "
+        "若有人補了值,**先確認來源是機組級而不是全市合計**(那只是上界)。"
+        "ARGO 與 Vestforbrænding 同樣值得去業者官網再找一次(ARC 就是這樣找到的)"
     )
     # ③ 交叉檢查:分項加總 vs varmelast 自己公布的合計
     chp = sum(v["mw_th"] for v in FLEET.values() if v["fuel"] == "biomass")
@@ -198,17 +224,31 @@ def demo() -> None:
         f" —— 對照 chp.Plant 目前的 s_max=2,880 MWh(DEA 單一 TTES)"
     )
 
-    # ⑤ 🔴 最重要的一行:把「一台都跑不了」變成會被看到的事實
+    # ⑤ 🔴 最重要的一行:把「哪些跑不了、為什麼」變成會被看到的事實
     r = runnable()
-    assert set(r) == {"arc", "argo"}, (
-        f"預期 ARC 與 ARGO 可跑(背壓式已實作、垃圾有處理費當燃料價),實際 {list(r)}"
+    assert set(r) == {"amager", "avedoere", "arc", "argo"}, (
+        f"預期可跑 = Amager / Avedøre / ARC / ARGO,實際 {list(r)}。"
+        "Amager 與 Avedøre 是 2026-08-15 用**假定的生質價**解封的 —— "
+        "若有人拿掉假定值,這兩台要跟著鎖回去"
+    )
+    # 🟡 鎖住「彈性只在抽汽式」這件事:核心假說要檢驗的就是這個
+    flex = [k for k in r if FLEET[k]["unit_type"] == "extraction"]
+    assert set(flex) == {"amager", "avedoere"}, (
+        f"可跑機組裡的抽汽式應該是 Amager 與 Avedøre,實際 {flex} —— "
+        "背壓式 P=Cb·Q 沒有彈性,核心假說只能在抽汽式身上檢驗"
     )
     print(
-        f"  ✅ 可跑機組 = {len(r)}/6:{', '.join(r)}(背壓式 2026-08-11 已實作,"
-        f"垃圾用處理費當負燃料價)"
+        f"  ✅ 可跑機組 = {len(r)}/6:{', '.join(r)}"
+        f"\n     其中**有彈性的抽汽式 {len(flex)} 台**({', '.join(flex)})—— "
+        "背壓式熱定了電就定了,沒有彈性可觀察"
     )
     print(
-        "  🔴 仍不可跑:生質 3 台卡**燃料價缺**;Vestforbrænding 卡**進傳輸網的比例未知**。"
+        "  🟡 Amager / Avedøre 是用**假定的生質價**解封的(assumptions.BIOMASS_ASSUMED_EUR_MWH),"
+        "\n     不是公布真值 → **水準結論要掃兩端**,真值待 Dansk Fjernvarme(DATA.md §8.5)"
+    )
+    print(
+        "  🔴 仍不可跑 2 台:**Køge** 卡機組型式與電容量未確認(佔容量僅 2%);"
+        "\n     **Vestforbrænding** 卡進傳輸網的比例未知(它先供自己五個市的配網)"
     )
 
 

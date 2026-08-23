@@ -36,10 +36,15 @@ def fetch(start="2021-01-01", end="2026-07-01", area="DK1") -> pd.DataFrame:
 
 
 if __name__ == "__main__":
+    import sys
     from pathlib import Path
 
-    START, END = "2019-01-01", "2026-07-08"
-    out_dir = Path("new_data")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+    from window import END, START, paths_for, retire_superseded
+    # 🔴 2026-08-21 修:原本寫成 Path("new_data"),但既有資料在 new_data/residual/
+    #    → 腳本重跑會把檔丟到根目錄,而下游 glob 找的是子目錄。
+    out_dir = Path("new_data/residual")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for area in ("DK1", "DK2"):
@@ -47,8 +52,9 @@ if __name__ == "__main__":
         assert (
             d["residual_mwh"] == d["load_mwh"] - d["wind_mwh"] - d["solar_mwh"]
         ).all()
-        path = out_dir / f"residual_{area.lower()}_{START}_{END}.parquet"
+        path, _old = paths_for(out_dir, f"residual_{area.lower()}")
         d.to_parquet(path, index=False, engine="pyarrow", compression="snappy")
+        retire_superseded(path, _old, "hour_utc")
         print(
             f"✓ {area}: {len(d)} rows  {d['hour_utc'].min()} → {d['hour_utc'].max()}  → {path}"
         )

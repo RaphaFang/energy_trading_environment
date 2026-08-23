@@ -175,23 +175,45 @@ def dk2_plant(key: str, **over) -> Plant:
 
     先前 ARC/ARGO 的結果都是臨時腳本跑的,沒有進 repo → 每次要重建、而且無法防迴歸。
 
-    只支援 `dk2_fleet.runnable()` 裡的機組(目前 ARC / ARGO):
-      · 熱容量 `mw_th` 用 varmelast 真值(熱網營運者自己講的,對 MW_th 是最高權威)
-      · 電容量用 `dk2_fleet.derived_mw_e()` 從 `P_max = Cb·Q_max` 反推(**只對背壓式成立**)
-      · 其餘技術參數走 DEA 的 `waste` 原型
+    只支援 `dk2_fleet.runnable()` 裡的機組。**兩種型式的電容量來源完全不同**:
+
+    | 型式 | 機組 | DEA 原型 | 電容量哪來 |
+    | --- | --- | --- | --- |
+    | 背壓 | ARC / ARGO | `waste` | `derived_mw_e()` 從 `P_max = Cb·Q_max` 反推 |
+    | 抽汽 | Amager / Avedøre | `wood_chips` | **`dk2_fleet` 查到的真值**(166 / 815 MW_e) |
+
+    🔴 **抽汽式不能用 `derived_mw_e()` 反推** —— 它有凝汽尾,電容量是獨立的自由度,
+    不是熱容量的後果。`derived_mw_e()` 自己有 assert 擋住。
+    🔑 而抽汽式正是**唯一有彈性的型式**(背壓 `P = Cb·Q`,熱定了電就定了)——
+    核心假說只能在 Amager / Avedøre 身上檢驗,見 `dk2_fleet.runnable()` 的 docstring。
 
     ⚠️ 這是**單機組**,不是整個熱網:餵它 DK2 全系統熱需求會讓尖峰鍋爐扛掉絕大部分。
+    ⚠️ 生質那兩台的燃料價目前是**假定值**(`assumptions.BIOMASS_ASSUMED_EUR_MWH`),
+    這個函式不管燃料價 —— 但用它的結果要記得標明。
     """
     import dk2_fleet as F
 
     v = F.FLEET[key]
     if v.get("blocked_by"):
         raise ValueError(f"{key} 目前跑不了:{v['blocked_by']}")
-    assert v["fuel"] == "waste", (
-        f"dk2_plant 目前只支援垃圾背壓機組,{key} 是 {v['fuel']}"
+
+    if v["unit_type"] == "back_pressure":
+        # 🔑 **真值優先,查不到才反推**(2026-08-15)。ARC 的 63 MW_e 是業者官網公布值,
+        #    反推得到的是 `Cb·Q = 0.28×250 = 70` —— **差 11%**。反推法因此得到驗證,
+        #    但既然有真值就不該再用推的。ARGO 仍是反推(業者官網還沒找到)。
+        cb = dea_plant("waste", p_max=1.0).cb
+        p_max = v["mw_e"] if v["mw_e"] is not F.NOT_FOUND else F.derived_mw_e(key, cb)
+        return dea_plant("waste", p_max=p_max, **over)
+
+    assert v["unit_type"] == "extraction", (
+        f"{key} 的 unit_type 是 {v['unit_type']!r} —— dk2_plant 只支援背壓與抽汽。"
+        "Køge 就是卡在這裡(VEKS 稱它 träfyret kedel,可能根本不是抽汽式)"
     )
-    cb = dea_plant("waste", p_max=1.0).cb
-    return dea_plant("waste", p_max=F.derived_mw_e(key, cb), **over)
+    assert v["mw_e"] is not F.NOT_FOUND, (
+        f"{key} 是抽汽式但 mw_e 是 NOT_FOUND —— 抽汽式的電容量不能從熱容量反推,"
+        "**不要拿 DEA 原型容量或全市合計填**(那是上界不是機組容量)"
+    )
+    return dea_plant("wood_chips", p_max=v["mw_e"], **over)
 
 
 def cop_from_temp(temp, cop_ref: float = None, t_ref: float = 7.0) -> np.ndarray:

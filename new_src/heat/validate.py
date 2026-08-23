@@ -46,8 +46,28 @@ from scipy.stats import spearmanr
 sys.path.insert(0, os.path.dirname(__file__))
 
 VARMELAST = "new_data/heat/varmelast_ckb_2021_2026.parquet"
-PRICE_H = "new_data/price/price_dk2_2019-01-01_2026-07-08.parquet"
-PRICE_15 = "new_data/price/price15_dk2_2025-09-30_2026-08-01.parquet"
+
+
+def _one(pattern: str) -> str:
+    """檔名裡帶抓取窗口 → **不能寫死**。glob 之後**強制唯一**。
+
+    🔴 2026-08-21 修:窗口改成「2019 → 今天」之後,原本寫死的
+    `price_dk2_2019-01-01_2026-07-08.parquet` 直接不存在,`load_dk2()` 全掛。
+    但**不要退回 `glob(...)[0]`** —— `data/window.py` 的 docstring 講得很清楚:
+    舊檔沒退場時取 `[0]` 會**靜默拿到舊檔**。寧願炸也不要靜默換掉資料。
+    """
+    import glob as _glob
+
+    fs = sorted(_glob.glob(pattern))
+    assert len(fs) == 1, (
+        f"{pattern} 匹配到 {len(fs)} 個檔:{fs}\n"
+        "  0 個 → 資料還沒抓;>1 個 → 舊檔沒退場,見 new_src/data/window.py 的 retire_superseded()"
+    )
+    return fs[0]
+
+
+PRICE_H = _one("new_data/price/price_dk2_*.parquet")
+PRICE_15 = _one("new_data/price/price15_dk2_*.parquet")
 
 # 消費欄(唯一可當 LP 輸入的兩欄,見 data/varmelast_heat.py)
 DEMAND_COLS = ["BE-EO-CTR-EFF", "DAP-VEKS-FORBRUG-EFF"]
@@ -651,18 +671,30 @@ def demo() -> None:
     #       「已知的區間有沒有跨過門檻」。**門檻必須用 κ 的真值算** ——
     #       κ 讓 P2H 變貴 → 更難擠掉垃圾 → 門檻往上移(κ=0 時 30,κ=8.50 時 35)。
     kap = A.KAPPA_NET
-    th = theta_h_threshold(y, kappa=kap, grid=[0, 20, 24, 30, 35, 40, 50])
+    #    🔴 **34 那一格是刻意加的**(≈70.5 DKK/GJ),而它一加進來就推翻了舊結論:
+    #       這裡報的「門檻」定義是**格點裡第一個非全開 ≥5% 的 θ_h**,
+    #       舊格點 30 與 35 之間是空的 → 報 35 (73 DKK/GJ);加了 34 之後報 34 (70)。
+    #       → **73 是格點假象**,真正的穿越點在 30–34 之間(62–70 DKK/GJ),
+    #         而代理上界 62 是**貼在下緣**,不是「低於門檻 18%」。
+    #       🔑 教訓:門檻這種由格點決定的數字,加一格就會動 → 報門檻要一起報格點解析度,
+    #         比較兩個 κ 的門檻時也**必須用同一組格點**。詳見 STATUS.md §9.4。
+    th = theta_h_threshold(y, kappa=kap, grid=[0, 20, 24, 30, 34, 35, 40, 50])
     print(f"\n  測試 2 — θ_h 門檻(ARC/ARGO,關蓄熱槽,**κ={kap:.2f} 真值**)")
     print(_fmt(th[th["機組"] == "arc"].drop(columns="機組")))
     arc = th[th["機組"] == "arc"]
     hit = arc[arc["非全開"] >= 0.05]["θ_h"]
     thr = float(hit.min()) if len(hit) else float("inf")
+    # 🔴 **報「穿越點落在哪兩格之間」而不是報單一數字** —— 單一數字是格點的性質不是模型的。
+    below = arc[arc["非全開"] < 0.05]["θ_h"]
+    lo_br = float(below.max()) if len(below) else float("nan")
     print(
-        f"    🔑 **非全開小時 ≥5% 的門檻 θ_h ≈ {thr:.0f} EUR/MWh_th "
-        f"({thr / 3.6 * DKK_PER_EUR_LOCAL:.0f} DKK/GJ_heat)**"
+        f"    🔑 **非全開 ≥5% 的穿越點落在 θ_h {lo_br:.0f} 與 {thr:.0f} EUR/MWh_th 之間"
+        f"({lo_br / 3.6 * DKK_PER_EUR_LOCAL:.0f}–{thr / 3.6 * DKK_PER_EUR_LOCAL:.0f} DKK/GJ_heat)**"
+        f"\n       ⚠️ **不要把上緣 {thr:.0f} 當成「門檻」單獨引用** —— 它只是格點裡第一個跨過去的格子,"
+        "\n          加一格就會動(2026-08-15 加了 34 就把舊的 35 推翻了)。"
         "\n       ⚠️ **擠掉垃圾的是 power-to-heat,不是尖峰鍋爐**(尖峰佔熱全程 0.00%)"
-        f"\n       → 所以門檻由 κ 決定:κ=0 時是 30,κ={kap:.2f} 真值時是 {thr:.0f}。"
-        "**兩個參數是耦合的,不能各自判斷。**"
+        f"\n       → 所以穿越點由 κ 決定,κ 越大越往上移。**兩個參數是耦合的,不能各自判斷**"
+        "(⚠️ 比較不同 κ 時必須用**同一組格點**)。"
     )
     # 🔑 **2026-08-15:θ_h 有公布值了,所以問題從「門檻在哪」變成「窗口區間有沒有跨過門檻」**
     lo, hi = A.THETA_HEAT_WASTE_LOW, A.THETA_HEAT_WASTE_HIGH
@@ -675,14 +707,24 @@ def demo() -> None:
         f"\n     兩端的 ARC 調度:垃圾佔熱 {e.loc[lo, 'Qc佔熱']:.1%} → {e.loc[hi, 'Qc佔熱']:.1%}、"
         f"非全開 {e.loc[lo, '非全開']:.1%} → {e.loc[hi, '非全開']:.1%} "
         f"(供熱成本 {e.loc[lo, '供熱成本']:.2f} → {e.loc[hi, '供熱成本']:.2f})"
-        "\n     → **無實質差異** → θ_h 這條線收掉,不必再去挖 2021–2024 的真值。"
+        "\n     🔴 **不可以寫成「兩端無差異」** —— 非全開小時是 6 倍(到 34 是 18 倍)。"
+        "\n     ✅ 正確宣稱:**供熱佔比全區間 97.6–99.8%,實質 must-run**"
+        " → **『垃圾焚化無策略調度邊際』這個結論對 θ_h 的真值不敏感**"
+        "\n     (宣稱的是研究結論一樣,不是兩次跑的數字一樣)→ 不必再去挖 2021–2024 的真值。"
     )
-    # 這兩條鎖住結論:區間必須在門檻下,且兩端的垃圾佔熱差距要小
+    # 這三條鎖住結論:區間必須在門檻下、兩端的垃圾佔熱差距要小、
+    # 而且**貼著門檻下緣的壓力測試也要撐得住**(這條才是「代理可能低估真值」的解答)
     assert hi < thr, (
         f"θ_h 上界 {hi:.1f} 若跨過門檻 {thr:.0f},垃圾機組的調度型態會變 → 結論要改寫"
     )
     assert abs(e.loc[lo, "Qc佔熱"] - e.loc[hi, "Qc佔熱"]) < 0.02, (
-        "θ_h 兩端的垃圾供熱佔比若差超過 2 個百分點,就不能說『無實質差異』"
+        "θ_h 兩端的垃圾供熱佔比若差超過 2 個百分點,就不能說『對真值不敏感』"
+    )
+    stress = th[(th["θ_h"] == 34) & (th["Qc佔熱"] < 0.95)]
+    assert stress.empty, (
+        "θ_h = 34(貼門檻下緣)時垃圾供熱佔比若跌破 95%,"
+        "「即使真值比代理上界再高 13% 也仍是 must-run」這個宣稱就不成立了:\n"
+        f"{stress}"
     )
 
     tf = theta_f_scan(y, kappa=kap)

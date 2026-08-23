@@ -179,7 +179,16 @@ if __name__ == "__main__":
             ("2022-07-01", "2022-10-01"),
             ("2022-10-01", "2022-12-31"),
         ]
-        print(f"· 檔案已存在 → 只補抓當初失敗的 {len(GAPS)} 個季度")
+        # 🔑 2026-08-21:除了補洞,還要**往前延到今天**(使用者定案的預設窗口)。
+        #    `fill_gaps` 本來就只新增、且寫入前逐格驗證舊資料沒被動到 → 直接沿用。
+        import pandas as _pd
+
+        _last = _pd.read_parquet(path)["timestamp"].max()
+        _today = _pd.Timestamp.today().normalize().tz_localize("UTC")
+        if _last < _today:
+            GAPS.append((_last.strftime("%Y-%m-%d"), _today.strftime("%Y-%m-%d")))
+            print(f"· 往前延伸:{_last.date()} → {_today.date()}")
+        print(f"· 檔案已存在 → 補抓 {len(GAPS)} 個區間")
         n = fill_gaps(path, GAPS)
         d = pd.read_parquet(path)
         print(f"✓ 新增 {n:,} 列,現在共 {len(d):,} 列 → {path}")
