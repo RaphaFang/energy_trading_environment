@@ -36,14 +36,21 @@ def get_json(url: str, params: dict, timeout: int = 180, tries: int = 9) -> list
     raise RuntimeError(f"{url}: 重試 {tries} 次仍失敗")
 
 
-def paged_json(url: str, params: dict, start: str, end: str, years: int = 1) -> pd.DataFrame:
-    """按年切塊抓完 [start, end),回傳接好的 DataFrame。
+def paged_json(
+    url: str, params: dict, start: str, end: str, years: int = 1, months: int | None = None
+) -> pd.DataFrame:
+    """按年(或月)切塊抓完 [start, end),回傳接好的 DataFrame。
 
     ⚠️ 切點用**左閉右開**,所以塊與塊之間不會重複計一筆。
+
+    `months` 覆蓋 `years`,給**每年上百萬列**的 dataset 用
+    (例:`PrivateConsumptionHeatingHour` 是逐時 × 90 市 × 5 住宅 × 2 供暖 ≈ 900 列/小時,
+    一年就 790 萬列 —— 一次要一年會逾時)。
     """
     out, cur, end_ts = [], pd.Timestamp(start), pd.Timestamp(end)
+    step = pd.DateOffset(months=months) if months else pd.DateOffset(years=years)
     while cur < end_ts:
-        nxt = min(cur + pd.DateOffset(years=years), end_ts)
+        nxt = min(cur + step, end_ts)
         rec = get_json(url, {**params, "start": cur.strftime("%Y-%m-%d"),
                              "end": nxt.strftime("%Y-%m-%d")})
         out.append(pd.DataFrame(rec))

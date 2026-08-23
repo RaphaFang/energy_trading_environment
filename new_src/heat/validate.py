@@ -46,8 +46,28 @@ from scipy.stats import spearmanr
 sys.path.insert(0, os.path.dirname(__file__))
 
 VARMELAST = "new_data/heat/varmelast_ckb_2021_2026.parquet"
-PRICE_H = "new_data/price/price_dk2_2019-01-01_2026-07-08.parquet"
-PRICE_15 = "new_data/price/price15_dk2_2025-09-30_2026-08-01.parquet"
+
+
+def _one(pattern: str) -> str:
+    """檔名裡帶抓取窗口 → **不能寫死**。glob 之後**強制唯一**。
+
+    🔴 2026-08-21 修:窗口改成「2019 → 今天」之後,原本寫死的
+    `price_dk2_2019-01-01_2026-07-08.parquet` 直接不存在,`load_dk2()` 全掛。
+    但**不要退回 `glob(...)[0]`** —— `data/window.py` 的 docstring 講得很清楚:
+    舊檔沒退場時取 `[0]` 會**靜默拿到舊檔**。寧願炸也不要靜默換掉資料。
+    """
+    import glob as _glob
+
+    fs = sorted(_glob.glob(pattern))
+    assert len(fs) == 1, (
+        f"{pattern} 匹配到 {len(fs)} 個檔:{fs}\n"
+        "  0 個 → 資料還沒抓;>1 個 → 舊檔沒退場,見 new_src/data/window.py 的 retire_superseded()"
+    )
+    return fs[0]
+
+
+PRICE_H = _one("new_data/price/price_dk2_*.parquet")
+PRICE_15 = _one("new_data/price/price15_dk2_*.parquet")
 
 # 消費欄(唯一可當 LP 輸入的兩欄,見 data/varmelast_heat.py)
 DEMAND_COLS = ["BE-EO-CTR-EFF", "DAP-VEKS-FORBRUG-EFF"]

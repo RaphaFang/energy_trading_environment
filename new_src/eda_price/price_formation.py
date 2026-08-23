@@ -56,9 +56,25 @@ SAT = 0.95                                   # 貼到容量上限的判定門檻
 VIKING = pd.Timestamp("2023-12-29", tz="UTC")  # Viking Link 上線,之後 DK1 多一條沒資料的邊界
 
 
+def _one(pattern: str):
+    """檔名帶抓取窗口 → **不能寫死**;glob 之後**強制唯一**。
+
+    🔴 2026-08-22 修:窗口改成「2019 → 今天」之後,寫死的 `..._2026-07-08` 不存在了,
+    `load_zone()` 直接 FileNotFoundError。
+    **但不要退回 `glob(...)[0]`** —— `data/window.py` 寫得很清楚:舊檔沒退場時取 `[0]`
+    會**靜默拿到舊檔**。寧願炸也不要靜默換掉資料。
+    """
+    fs = sorted(DATA.glob(pattern))
+    assert len(fs) == 1, (
+        f"{pattern} 匹配到 {len(fs)} 個檔:{[f.name for f in fs]}\n"
+        "  0 個 → 資料還沒抓;>1 個 → 舊檔沒退場,見 new_src/data/window.py 的 retire_superseded()"
+    )
+    return fs[0]
+
+
 def load_zone(z: str) -> pd.DataFrame:
     lo = z.lower()
-    p = pd.read_parquet(DATA/f"production/production_{lo}_2019-01-01_2026-07-08.parquet")
+    p = pd.read_parquet(_one(f"production/production_{lo}_*.parquet"))
     p = p.rename(columns={"HourUTC":"t"}).set_index("t").sort_index()
     p = p[GEN + EX + ["TotalLoad"]].resample("1h").mean()          # 陷阱 1
     # 陷阱 2:Energinet 的 TotalLoad 有極端壞值。
@@ -71,9 +87,9 @@ def load_zone(z: str) -> pd.DataFrame:
     p.attrs["n_bad_load"] = int(bad.sum())
     p["gen"] = p[GEN].sum(axis=1, min_count=1)
     p["imp"] = p[EX].sum(axis=1, min_count=1)
-    pr = pd.read_parquet(DATA/f"price/price_{lo}_2019-01-01_2026-07-08.parquet")
+    pr = pd.read_parquet(_one(f"price/price_{lo}_*.parquet"))
     pr = pr.rename(columns={"HourUTC":"t","SpotPriceEUR":"price"}).set_index("t")[["price"]]
-    rs = pd.read_parquet(DATA/f"residual/residual_{lo}_2019-01-01_2026-07-08.parquet")
+    rs = pd.read_parquet(_one(f"residual/residual_{lo}_*.parquet"))
     rs = rs.rename(columns={"hour_utc":"t"}).set_index("t")[["residual_mwh"]]
     d = p.join(pr.resample("1h").mean(), how="left").join(rs.resample("1h").mean(), how="left")
     for nb in NEIGHBOUR[z]:
