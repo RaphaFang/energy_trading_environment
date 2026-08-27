@@ -524,7 +524,7 @@ Avedøre 936.5 vs 880;ARC 190 vs 250)。**不要混用,選一個並在論文標�
 | 0   | 🔴 **生質燃料價還是假定值**                                       | §5.4 顯示它比「關哪一座」大一個數量級 → **升級成第一順位**       | 要寫信 |
 | 1   | **熱泵不是 agent** —— 現在是匿名的 `Qh`,上限 **登記 50.3 MW_th**(HOFOR 自己只有 9.9) | HOFOR 要蓋 **300 MW**。要講「換成熱泵」,熱泵必須是 agent 的資產 | 中   |
 | 2   | **多 agent 層 0%** —— 現在是各自獨立單機跑,各吃一份縮放過的需求  | 要的是**一個 LP、多台機組、一條共用熱需求約束**                 | 中   |
-| 3   | `LITERATURE.md` 整份還是電池線的                                 | 範圍要改成:區域供熱電氣化 / 適足性 / 部門耦合                   | 中   |
+| 3   | `archive/LITERATURE_battery.md` 整份還是電池線的                                 | 範圍要改成:區域供熱電氣化 / 適足性 / 部門耦合                   | 中   |
 | 4   | **抽汽的 `Cv`** —— EPT 給不了(年平均是運轉點,`Cv` 是斜率)      | 抽汽機組的彈性帶寬完全由它決定                                  | 中   |
 | 5   | **DEA 的 `cop_ref=2.8` 對應哪個供水溫度?**                       | 見 §9.1                                                         | 低   |
 | 6   | 🔴 **`ElectricityBalanceNonv` 2026-01-06 停止發布**               | 驗證章三個診斷全靠它;ENTSO-E 接不上(§5.1 那個 ×3.5 的坑)      | 🔴 未解 |
@@ -536,7 +536,7 @@ Avedøre 936.5 vs 880;ARC 190 vs 250)。**不要混用,選一個並在論文標�
 | 章               | 內容                                                                                  | 現況                              |
 | ---------------- | ------------------------------------------------------------------------------------- | --------------------------------- |
 | **1 導論**       | 三面向的衝擊、政策矛盾、研究問題                                                      | 🟡 材料齊                         |
-| **2 背景與文獻** | 丹麥 DH 制度(hvile-i-sig-selv、Varmelast、稅制)、**FFH50 的定位**、電氣化與適足性文獻 | 🔴 `LITERATURE.md` 要重寫         |
+| **2 背景與文獻** | 丹麥 DH 制度(hvile-i-sig-selv、Varmelast、稅制)、**FFH50 的定位**、電氣化與適足性文獻 | 🔴 `archive/LITERATURE_battery.md` 要重寫         |
 | **3 資料**       | varmelast 端點鑑識、電價、天氣、燃料、稅費、車隊                                      | ✅ 基本完成(`DATA.md`)            |
 | **4 模型**       | 排程 LP、成本式、背壓 vs 抽汽是「一個界」、四個稅費參數的推導                         | ✅ 基本完成(`STATUS.md` §1–4、§9) |
 | **5 驗證**       | 三個尺度無關診斷;年佔比對得上但日內時點是反的;排除了什麼                              | ✅ 完成,**本身就是貢獻**          |
@@ -703,7 +703,7 @@ FFH50 查到:**HOFOR 技術規定供水 65–95°C 隨外氣溫**;**2017–2020 
 6. **熱泵變成 agent 的資產**(HOFOR 300 MW,登記 50.3 MW_th 是現況不是上限)
 7. **多 agent 層**:一個 LP、多台機組、一條共用熱需求約束
 8. 三面向情境跑 + 「關哪一座 vs 燃料價假設」誰比較重要
-9. `LITERATURE.md` 重寫
+9. `archive/LITERATURE_battery.md` 重寫
 
 ## 🅿️ 使用者尚未拍板:全國 vs 只做 DK2
 
@@ -761,3 +761,13 @@ Køge 與 Vestforbrænding · `plant.py` 重構
 | **`new_src/heat/sector_coupling.py`** | `figs/heat_baseline/sector_coupling_hourly.parquet` | **§5.5 整段(尖峰重合度與搬家)** |
 | `new_src/eda_price/swing_and_headroom.py` | `figs/price_formation/swing_vs_headroom_joint.csv` | §10 第 11 條的逐時聯合檢定 |
 | `new_src/data/heating_consumption.py` | `new_data/heating_consumption/` | §11 的全國逐時電熱負載 |
+
+---
+
+---
+
+# 13. 🆕 模擬設計定案
+
+> 🔴 **2026-08-27:這一節與 [`MODEL_2035.md`](MODEL_2035.md) 大量重複,已移出。**
+> **設計決策的完整版看 `MODEL_2035.md`**(它同時有設計、驗證、結果、限制)。
+> 原始的清單版封存在 [`archive/THESIS_DIRECTION_s13.md`](archive/THESIS_DIRECTION_s13.md)。

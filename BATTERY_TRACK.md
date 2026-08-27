@@ -1,3 +1,15 @@
+> # 🔴 2026-08-27:**五支程式碼已從工作區移除**
+>
+> `v2_multi.py` · `v3_cournot.py` · `v4_wind.py` · `experiment.py` · `compare.py`
+> —— Cournot / λ / 多 agent 最佳反應那一套。**λ 量定 ≈0.005,該路線結案。**
+>
+> **拿回來**:`git show battery-track-final:new_src/battery/v3_cournot.py`
+> 或 `git restore --source=battery-track-final new_src/battery/`
+>
+> ✅ **留在工作區的兩支是交易線的地基**:`v1_single.py`(資訊階梯)、`fringe.py`(殘餘需求曲線)。
+> 🔑 **這份文件現在的用途:交易線的前情提要** —— λ 為什麼是 0、預測管道長什麼樣。
+> 現行方向見 [`HANDOVER.md`](HANDOVER.md)。
+
 # 電池線 + 預測管道 — 設計、結果、結案理由
 
 > 合併自舊的 `SIMULATOR_OVERVIEW.md` + `MULTI_AGENT_MARKET.md` + `MODEL_MATH.md`(2026-08-07)。
