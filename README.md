@@ -43,6 +43,8 @@
 | 比較要控制住其他變數               | 驗「背壓 vs 抽汽」時若同時改 `cv`,就不是純粹放寬,測試會(正確地)失敗                                                                                                                  |
 | **年佔比對得上 ≠ 模型對**          | 尖峰鍋爐年佔比 5.95% vs 實測 5.12%,但**日內時點符號相反**(−0.50 vs +0.170)。水準的識別力太弱                                                                                         |
 | **季節性陷阱會一再出現**           | 「高價時出力更高」在同一天內幾乎都是反的。任何價格反應的檢定**一律先加日固定效果**                                                                                                   |
+| **`aFRRVWA*EUR` 的 0 是哨兵** | aFRR 沒啟動時那一欄是 **0 不是缺值**。直接拿去比大小,0 會偽裝成最低價,把不平衡價的下調側規則算歪 → 只有 `aFRRUpMW`/`aFRRDownMW` 非零時才准進候選 |
+| **制度改變不要對齊成同一天** | 不平衡結算、不平衡**定價規則**、日前市場、定價缺陷修正是**四個不同日期**。合併成一個「15 分鐘改制」會把三件事混成一件 |
 | **參數有真值後要追預設值流到哪**   | θ_h 一有預設值,`run_model` 那個「垃圾原型當系統代理」就開始繳垃圾稅 → 尖峰鍋爐從 5.80% 暴衝到 71.65%。看起來像發現,其實是接線錯                                                      |
 | **代理模型的錯配不只被抓到那一個** | θ_h 會跳出來只因為它從 0 變非 0。同一個代理裡 `p_fuel`/`ef`/`Cv` **從一開始就錯配**(車隊 64.6% 其實是生質),只是沒有暴露時刻 → **車隊層級數字不可直接比對實測**(`STATUS.md` §9.4c)    |
 | **同一個數字在不同文件要對得起來** | θ_h 一天內在 23.8/23.9/23.85/**26.84** 之間動過(先是四捨五入不一致,後是排放係數級距修正)。**引用一律寫 26.84 或 55.6 DKK/GJ_heat**,並註明日期                                        |
@@ -90,6 +92,11 @@ new_src/
 │                ept_fleet 逐台實測效率 / plant_lifetimes 官方退場年
 │                baseline_dk2 · replacement_cost · sector_coupling · fuel_calibration
 │
+├── trading/     ★ 現行主線(交易 agent):
+│                imbalance_regimes 不平衡價的四個制度期 + 反推定價規則
+│                oracle            階段 0 完美預知上界(15 分 vs 逐時)
+│                agent             日前交易 agent + 特徵 ablation(用錢排序)
+│
 ├── eda_price/   價格形成診斷(λ、耦合率、聯絡線)
 ├── battery/     ★ 只剩兩支,留作交易線的地基:
 │                v1_single perfect vs naive 資訊階梯 → 階段 0 的 oracle
@@ -105,7 +112,14 @@ python new_src/data/elspot_price.py        # 電價(逐時 + 15 分)
 python new_src/data/imbalance_price.py     # 不平衡價(逐時 + 15 分)
 python new_src/heat/joint_dispatch.py 2024 # 熱側聯合 LP + 對實測驗證(約 2 秒)
 python new_src/heat/scenarios.py           # 2035 情境網格(約 4 分鐘)
+
+python new_src/trading/imbalance_regimes.py  # ★ 不平衡價四個制度期(約 5 秒)
+python new_src/trading/oracle.py             # ★ 階段 0 完美預知上界(約 5 秒)
+python new_src/trading/agent.py              # ★ 日前 agent + ablation(約 10 分鐘)
 ```
+
+🔴 **不平衡價不是一條序列,是四個制度期** —— 2025-03-04 / 03-18 / 09-30 / 12-08 各換一次規則。
+**乾淨的估計窗口是 2025-12-08 起**,跨接縫比較量到的是市場改革不是 agent 績效。見 `DATA.md` §12。
 
 ⚠️ `load_duckdb.py` **尚未納入 15 分鐘電價** —— `training` view 右界仍停在 2025-09-30。
 2025-10 之後要自己讀 `price15_*.parquet` 並 `resample('1h').mean()`(價格是強度量,用 mean)。
