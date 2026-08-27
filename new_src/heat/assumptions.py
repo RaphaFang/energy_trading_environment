@@ -221,6 +221,45 @@ THETA_HEAT_WASTE = THETA_HEAT_WASTE_LOW
 ⚠️ **不要把 2026 的值鋪滿 2021–2024**,那會系統性低估前四年。
 """
 
+GAS_ENERGY_TAX_ORE_NM3 = {
+    2022: 249.6, 2023: 253.1, 2024: 272.6,
+    2025: 136.9, 2026: 138.3, 2027: 140.8,
+}
+"""🆕 **天然氣的能源稅(energiafgift)** [øre/Nm³]。2026-08-25 查證。
+
+**來源**:Skat《Den juridiske vejledning》**E.A.4.4.7.1 Afgiftssatser**,
+法源 **GASAL § 1, stk. 2, 1. pkt.**(+ MINAL § 32 a)。逐年按淨物價指數調整。
+
+🔴 **2024 → 2025 從 272.6 掉到 136.9 是真的斷崖,不是抄錯** ——
+**綠色稅改把負擔從能源稅移到 CO2 稅**(2025 起 CO2-afgift 大幅調高)。
+→ **跨越 2025 的比較,只看能源稅會誤以為氣變便宜了。**
+
+🔑 **同一個稅率適用於「氣鍋爐產熱」與「熱電機組」** —— 該條明文
+`gælder både for gas til varmeproduktion i gaskedler ... og for gas, som anvendes til
+el- og varmefremstilling på stationære motorer i kraft-varme-værker`。
+📌 **區域供熱廠不能退這筆稅**(只有電鍋爐那條 elpatronordningen 例外)。
+
+⚠️ **還沒查證、目前沒進模型的一項**:2025 起大幅調高的**天然氣 CO2-afgift**
+(二手來源說 2025 約 1.922 kr/Nm³),以及尖峰鍋爐是不是**配額涵蓋**
+(配額涵蓋要付 ETS + 較低的國內 CO2 稅;非配額付較高的國內 CO2 稅但不付 ETS)。
+🔴 **模型目前只收 energiafgift + ETS,所以對尖峰鍋爐是偏低估的** —— 方向已知,先記著。
+"""
+
+_NATURGAS_GJ_PER_NM3 = 38.03 / 1000
+"""天然氣低熱值,SØB25 Tabel 1 儲存格 B6(`new_data/soeb25_&_extra_params/`)。"""
+
+
+def gas_energy_tax_eur_mwh(year: int) -> float:
+    """天然氣能源稅 [EUR/MWh_fuel]。**查不到那一年就拋錯,不外插。**"""
+    if year not in GAS_ENERGY_TAX_ORE_NM3:
+        raise KeyError(
+            f"沒有 {year} 年的天然氣能源稅率(只有 "
+            f"{min(GAS_ENERGY_TAX_ORE_NM3)}–{max(GAS_ENERGY_TAX_ORE_NM3)})。"
+            "**不要外插** —— 2024→2025 有結構斷點(綠色稅改),線性外插會錯一倍。")
+    dkk_per_mwh = (GAS_ENERGY_TAX_ORE_NM3[year] / 100) / (_NATURGAS_GJ_PER_NM3 / 3.6)
+    return dkk_per_mwh / DKK_PER_EUR
+
+
 THETA_FUEL_GAS = 0.0
 """θ_f 燃料側國內碳稅 [EUR/tCO2],掛在 **F**(進 `ef` 括號內)。**維持 0,已由掃描排除。**
 
