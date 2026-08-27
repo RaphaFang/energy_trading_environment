@@ -35,18 +35,51 @@
 
 🔑 **RL 的研究問題本身就是「它到什麼複雜度才開始值得」** —— 每一階都跑 RL vs 最佳化基準,量那個差距什麼時候從 0 變正。
 
-### 🔴 下一步
+### 🔴 下一步(照這個順序)
 
-1. **階段 0 的完美預知上界**(已跑出初值,見下)—— 15 分版 vs 逐時版,差額 = 15 分鐘制度值多少錢
-2. 把 `models/forecast.py` 與 `battery/v1_single.py` 升級成交易線的骨架
-3. 特徵的 ablation —— **用「錢」排序,不是用預測準確度排序**(那篇北歐論文沒做)
+1. 🔴 **先查清楚下面那個未解問題** —— 它決定整條線的目標函數合不合理
+2. **階段 0 的完美預知上界**變成 repo 腳本(現在只在 scratch 跑過)
+   —— 比較用**同一段期間、兩種解析度**(把 15 分自己聚合成逐時),不要用制度前後比
+3. 把 `models/forecast.py` 與 `battery/v1_single.py` 升級成交易線的骨架
+4. 特徵 ablation —— **用「錢」排序,不是用預測準確度排序**(arXiv 2510.16021 沒做這件事)
 
-### 已有的初步數字(2026-08-27,scratch 跑的,尚未進 repo 腳本)
+### 🔴 未解:不平衡價的偏離跳了三倍,而且不是解析度造成的
 
-- 完美預知上界 DK2 10 MW:**15 分版 5,405 k€/年 vs 逐時版 4,936 k€/年 → 差 9.5%**
-  ⚠️ 這是「每一期都押對邊」的上界,**遠大於任何真實 agent**,只能當分母
-- 🔴 **不平衡價與現貨價的偏離在 15 分鐘時代暴增**:2024 逐時 €25.89 → 2025-03 之後 **€76.14**;
-  **同期聚合成逐時仍有 €69.47 → 不是解析度造成的,是制度改變後的真實變化。還沒解釋。**
+| DK2 平均 \|不平衡價 − 現貨價\| | |
+| --- | --- |
+| 2019 逐時 | €8.25 |
+| 2024 逐時 | €25.89 |
+| **2025-03 之後(15 分)** | **€76.14** |
+| **同期聚合成逐時** | **€69.47** ← 🔴 **所以不是 15 分鐘解析度造成的** |
+
+**兩種可能,還沒查**:①15 分鐘結算上路後平衡市場真的變劇烈(那是可以寫的發現)
+②新資料集的欄位口徑跟舊的不同(那是資料問題,愈早知道愈好)。
+
+### 已跑出的初值(scratch,尚未進 repo 腳本)
+
+- 完美預知上界 DK2 10 MW:**15 分版 5,405 k€/年 vs 逐時版 4,936 k€/年 → +9.5%**(DK1 +10.8%)
+  ⚠️ 「每期都押對邊」的上界,**遠大於任何真實 agent,只能當分母**。
+  📌 對照 arXiv 2510.16021:10 MW 太陽電廠實得 €19.9k/年、DK1 回收 oracle 的 38%、DK2 30%。
+
+---
+
+## 這一輪結束時的版控狀態(2026-08-27)
+
+```
+5649eb4  chore: drop the Cournot and multi-agent battery machinery
+2ca1fe2  feat: pivot to the trading-agent track, and cut the docs to one entry point
+a77604b  (tag: battery-track-final)  feat: joint dispatch LP, 2035 scenarios, hindcast
+```
+
+**三個 commit 與 tag 都已推上 origin。** 刪掉的 12 個檔全部在 tag 裡:
+battery 五支 · `requirements.txt`(pin 版本)· `Dockerfile` · `docker-compose.yml` · `eda.ipynb` · pptx
+
+```bash
+git show battery-track-final:requirements.txt          # 看
+git restore --source=battery-track-final new_src/battery/   # 拿回工作區
+```
+
+⚠️ **`requirements.txt` 已刪 → 現在沒有 pin 版本清單。** 要重建環境從 tag 取回。
 
 ---
 
