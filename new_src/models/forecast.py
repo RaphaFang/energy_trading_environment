@@ -19,6 +19,14 @@ from sklearn.model_selection import TimeSeriesSplit
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+# ★ 2026-08-28 掃過 44 個設定之後的最佳組合(`experiments.py`,兩個價區一致)。
+#   Ridge + Lasso + LightGBM 三者平均 · **只用最近 12 個月**重訓 · 目標改成「相對昨天同一小時的變化」
+#   DK1 MAE 19.12 → 17.10(rMAE 0.629 → 0.562)、DK2 22.04 → 18.10(0.683 → 0.561)
+#   🔑 它勝出的理由不只是平均低,**它是唯一在 2025-10 制度斷點後不退化的設定**
+#      (DK1 前半 17.14 / 後半 17.05)。機制見 `experiments.py` 的說明。
+BEST = {"refit": "roll12", "pooling": "pooled", "target": "detrend",
+        "models": ("Ridge", "Lasso", "LightGBM")}
+
 DB = "new_data/energy.duckdb"
 SPLIT = "2024-07-01"  # train < SPLIT, test >= SPLIT (chronological, no leak)
 TARGET = "y_price_eur"
@@ -38,9 +46,12 @@ LEAK_COLS = {
 
 def load_training(zone: str | None = None) -> pd.DataFrame:
     """讀 duckdb 的 training view。zone=None 拿全部(baseline 逐區跑用)。"""
+    # 🔴 `price_lag24_eur` 也要非空:它是 naive-24h 這把尺本身。
+    #    2025-10 的夏令時那一小時 lag24 是 NULL,**一格 NaN 就把 MAE/RMSE/R2/rMAE 全毒成 NaN**
+    #    (np.mean 不是 nanmean)。而且濾掉它才能保證四個模型評在**同一批列**上。
     q = (
         "SELECT * FROM training WHERE y_price_eur IS NOT NULL "
-        "AND solar_da_mwh IS NOT NULL"
+        "AND solar_da_mwh IS NOT NULL AND price_lag24_eur IS NOT NULL"
     )
     if zone:
         q += f" AND area='{zone}'"
