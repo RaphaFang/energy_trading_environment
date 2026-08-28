@@ -39,8 +39,8 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from agent import (DATA, DT_H, FEATS, OUT, P_MW, build_panel, money,  # noqa: E402
-                   oracle_money, recovery_ci)
+from agent import (ASOF_FEATS, DATA, DT_H, FEATS, OUT, P_MW, build_panel,  # noqa: E402
+                   money, oracle_money, recovery_ci)
 from imbalance_regimes import D_AFRR, D_DA15, load_new  # noqa: E402
 
 SELECT_START = pd.Timestamp("2026-03-01", tz="UTC")
@@ -93,6 +93,18 @@ def _ridge(tr, te, feats):
     return p.fit(tr[feats], tr["dev"]).predict(te[feats])
 
 
+def _roll(months: int):
+    """只用最近 N 個月訓練。**這是模型 A 的修法裡唯一能轉移過來的那一半** ——
+    A 的另一半(detrend)在這裡沒有意義:dev 本身就已經是個差、平均 ≈ 0、沒有趨勢,
+    對一個零均值無趨勢的目標再 detrend,沒有東西可以去掉。"""
+    def f(tr, te, feats):
+        cut = tr.index.max() - pd.DateOffset(months=months)
+        t = tr[tr.index >= cut]
+        return _lgbm_reg(t if len(t) > 20 * 96 else tr, te, feats)
+    f.months = months          # `_reseed` 要知道這個變體的訓練窗長度
+    return f
+
+
 def _decomp(tr, te, feats):
     """拆解目標:E[dev] = P(上調)·E[dev|上調] − P(下調)·E[|dev| |下調]。
 
@@ -108,6 +120,7 @@ def _decomp(tr, te, feats):
     return p_up * m_up + (1 - p_up) * m_dn
 
 
+# ══════════ 第一輪(2026-08-28,已跑完:兩區贏家在驗證窗都掉回 0)══════════
 VARIANTS = {
     "① 基準(LightGBM 回歸)":        dict(fit=_lgbm_reg, feats="base", train=D_DA15, act="sign"),
     "② Ridge(強正則化)":            dict(fit=_ridge,   feats="base", train=D_DA15, act="sign"),
@@ -116,6 +129,31 @@ VARIANTS = {
     "⑤ 拆解(方向機率×歷史幅度)":    dict(fit=_decomp,  feats="bias", train=D_DA15, act="sign"),
     "⑥ 拉長訓練(2025-03-18 起)":    dict(fit=_lgbm_reg, feats="bias", train=D_AFRR, act="sign"),
     "⑦ +偏差 · 不確定就不進場":      dict(fit=_lgbm_reg, feats="bias", train=D_DA15, act="thresh"),
+}
+
+
+# ══════════ 第二輪 ══════════════════════════════════════════════════════
+#
+# 起因是使用者的兩個質問,兩個都成立:
+#   ① 「不平衡價順著出來就好,為什麼要砍到落後 2 天」
+#      → 對。改成 **as-of 關門**:能拿多新就拿多新(`agent.ASOF_FEATS`)。
+#        🔴 第一版接錯,被 leak canary 抓到(窗口收在 gate 那一格 = 還沒交割的那 15 分鐘),
+#           已改成收在 gate 前 1 小時。
+#   ② 「A 可以用 rolling window,B 為什麼不試」
+#      → 也對。第一輪只測了**拉長**訓練(變體⑥),**沒測縮短**,那是不對稱的。
+#
+# 🔴 **誠實的限制**:驗證窗 2026-06→08 第一輪已經看過一次,所以它不再是完全乾淨的
+#    holdout。因此第二輪把門檻提高到 **CI 必須完全離開 0** 才算數,而且這個證據
+#    比第一輪弱 —— 真正確認要等新資料(目前只到 2026-08-21)。
+ASOF = FEATS + ASOF_FEATS
+
+VARIANTS2 = {
+    "Ⓐ as-of 特徵(擴張訓練)":      dict(fit=_lgbm_reg,  feats="asof", train=D_DA15, act="sign"),
+    "Ⓑ as-of + 最近 6 個月":        dict(fit=_roll(6),   feats="asof", train=D_DA15, act="sign"),
+    "Ⓒ as-of + 最近 3 個月":        dict(fit=_roll(3),   feats="asof", train=D_DA15, act="sign"),
+    "Ⓓ 舊特徵 + 最近 6 個月":       dict(fit=_roll(6),   feats="base", train=D_DA15, act="sign"),
+    "Ⓔ as-of + 6 個月 · Ridge":     dict(fit=_ridge,     feats="asof", train=D_DA15, act="sign"),
+    "Ⓕ as-of + 6 個月 · 不確定不進場": dict(fit=_roll(6), feats="asof", train=D_DA15, act="thresh"),
 }
 
 
@@ -192,22 +230,66 @@ def selfcheck() -> None:
           f"{day:%Y-%m-%d} 的 {len(BIAS_FEATS)} 個偏差特徵不變 → 沒有 leak")
 
 
-def main() -> None:
+def seed_spread(panel, feats, cfg, lo, hi, seeds=range(8)) -> np.ndarray:
+    """🔴 **只換 random seed,同一個變體能拿多少?**
+
+    這是第二輪學到的教訓。第一版的門檻只有「按日 bootstrap 的 CI 離開 0」,
+    但那只量了**抽哪些天**的不確定性,**沒量模型訓練本身的不確定性**。
+    DK1 變體Ⓕ 在驗證窗拿到 +3.97%、CI [+0.7, +7.5] 看起來過關 —— 換八個 seed 之後
+    落在 **−4.53% 到 +4.29%**,平均 +2.07%。**seed 的擺動比那個 CI 整段還寬。**
+
+    → **從此門檻是兩條:①CI 離開 0 ②八個 seed 全部同號。** 缺一不算。"""
+    out = []
+    for sd in seeds:
+        def fit(tr, te, f, _sd=sd):
+            base = cfg["fit"]
+            m = base(tr, te, f) if not hasattr(base, "seeded") else base(tr, te, f, _sd)
+            return m
+        r = walk(panel, feats, _reseed(cfg["fit"], sd), cfg["train"], lo, hi)
+        out.append(money(position(r, cfg["act"]), r["dev"].values)
+                   / oracle_money(r["dev"].values) * 100)
+    return np.array(out)
+
+
+def _reseed(fit, seed: int):
+    """把 LightGBM 的 random_state 換掉。線性模型沒有隨機性,原樣回傳。"""
+    def f(tr, te, feats):
+        if fit is _ridge:
+            return _ridge(tr, te, feats)
+        sub = tr
+        if getattr(fit, "months", None):
+            cut = tr.index.max() - pd.DateOffset(months=fit.months)
+            sub = tr[tr.index >= cut]
+            sub = sub if len(sub) > 20 * 96 else tr
+        cut_i = int(len(sub) * 0.9)
+        m = lgb.LGBMRegressor(n_estimators=2000, learning_rate=0.03, num_leaves=63,
+                              subsample=0.8, colsample_bytree=0.8,
+                              random_state=seed, verbose=-1)
+        m.fit(sub[feats].iloc[:cut_i], sub["dev"].iloc[:cut_i],
+              eval_set=[(sub[feats].iloc[cut_i:], sub["dev"].iloc[cut_i:])],
+              callbacks=[lgb.early_stopping(50, verbose=False)])
+        return m.predict(te[feats])
+    return f
+
+
+def main(round2: bool = False) -> None:
+    variants = VARIANTS2 if round2 else VARIANTS
+    tag = "第二輪(as-of 特徵 + 短 rolling window)" if round2 else "第一輪"
     OUT.mkdir(parents=True, exist_ok=True)
-    rep = ["# 模型 B 的變體搜尋(先選擇、再獨立驗證)", "",
+    rep = [f"# 模型 B 的變體搜尋 —— {tag}", "",
            f"選擇窗 {SELECT_START:%Y-%m-%d} → {HOLDOUT_START:%Y-%m-%d};"
            f"驗證窗 {HOLDOUT_START:%Y-%m-%d} → 資料結束。",
-           f"**共 {len(VARIANTS)} 個變體,清單在跑之前就定案。**",
+           f"**共 {len(variants)} 個變體,清單在跑之前就定案。**",
            "🔴 只有在選擇窗勝出的那一個,才准去驗證窗跑一次。", ""]
 
     for area in ("DK1", "DK2"):
         base = build_panel(area)
         panel = add_bias_features(area, base)
-        featmap = {"base": FEATS, "bias": FEATS + BIAS_FEATS}
+        featmap = {"base": FEATS, "bias": FEATS + BIAS_FEATS, "asof": ASOF}
 
         rows = []
         cache = {}
-        for name, cfg in VARIANTS.items():
+        for name, cfg in variants.items():
             f = featmap[cfg["feats"]]
             r = walk(panel, f, cfg["fit"], cfg["train"], SELECT_START, HOLDOUT_START)
             cache[name] = (f, cfg)
@@ -225,21 +307,29 @@ def main() -> None:
         rh = walk(panel, f, cfg["fit"], cfg["train"], HOLDOUT_START,
                   panel.index.max() + pd.Timedelta("1D"))
         eh = evaluate(rh, cfg["act"])
-        verdict = ("✅ 撐住了" if eh["CI 下"] > 0 else
-                   "🔴 掉回噪音 —— 選擇窗挑到的是噪音")
+        sp = seed_spread(panel, f, cfg, HOLDOUT_START, panel.index.max() + pd.Timedelta("1D"))
+        same_sign = bool((sp > 0).all() or (sp < 0).all())
+        verdict = ("✅ 撐住了(CI 離開 0 **且**八個 seed 同號)"
+                   if eh["CI 下"] > 0 and same_sign else
+                   "🔴 沒撐住 —— " + ("CI 跨 0" if eh["CI 下"] <= 0 else
+                                      f"CI 雖離開 0,但換 seed 就變號({sp.min():+.1f}% ~ {sp.max():+.1f}%)"))
         rep += [f"### {area} 勝出者「{win}」拿到驗證窗", "",
                 f"- 選擇窗:回收 **{t.iloc[0]['回收 %']:+.2f}%** "
                 f"CI [{t.iloc[0]['CI 下']:+.1f}, {t.iloc[0]['CI 上']:+.1f}]",
                 f"- **驗證窗:回收 {eh['回收 %']:+.2f}%** "
-                f"CI [{eh['CI 下']:+.1f}, {eh['CI 上']:+.1f}]、{eh['n']:,} 格 → **{verdict}**", ""]
+                f"CI [{eh['CI 下']:+.1f}, {eh['CI 上']:+.1f}]、{eh['n']:,} 格",
+                f"- **換 8 個 random seed:{sp.min():+.2f}% ~ {sp.max():+.2f}%,"
+                f"平均 {sp.mean():+.2f}%、標準差 {sp.std():.2f}**",
+                f"- → **{verdict}**", ""]
         print(f"  {area} 勝出「{win}」→ 驗證窗 {eh['回收 %']:+.2f}% "
               f"CI [{eh['CI 下']:+.1f}, {eh['CI 上']:+.1f}]  {verdict}", flush=True)
 
-    (OUT / "AGENT_SEARCH.md").write_text("\n".join(rep), encoding="utf-8")
-    print(f"\n→ 已寫出 {OUT/'AGENT_SEARCH.md'}")
+    f = OUT / ("AGENT_SEARCH2.md" if round2 else "AGENT_SEARCH.md")
+    f.write_text("\n".join(rep), encoding="utf-8")
+    print(f"\n→ 已寫出 {f}")
 
 
 if __name__ == "__main__":
     selfcheck()
     print()
-    main()
+    main(round2="--round2" in sys.argv)

@@ -66,6 +66,9 @@ GROUPS = {
     # 電池線的紀錄:加了鄰國資料,價格預測的 rMAE 才從 0.76 掉到 0.54,`de_residual` 是分裂次數第一。
     # **但發布時點沒有保證在關門前**,見 BID_TIME_SAFE。
     "鄰國殘餘(ENTSO-E 日前)": ["nb_de", "nb_se3", "nb_se4", "nb_de_ramp"],
+    # ★ as-of 關門:**能拿多新就拿多新**,而不是一律砍到落後 2 天(見下面的說明)
+    "as-of 關門": ["dev_lastq", "dev_g24", "dev_g7d", "absdev_g7d", "dir_g7d",
+                   "spot_l1d", "spot_g24"],
 }
 
 # 🔴 **ENTSO-E 的日前預測不保證在投標關門前就發布。**
@@ -79,8 +82,11 @@ GROUPS = {
 #      但同樣沒有發布時戳可證。要釘死就得去拉 ENTSO-E API 的 createdDateTime。
 BID_TIME_SAFE = True
 UNSAFE_GROUPS = ("本地負載日前預測", "鄰國殘餘(ENTSO-E 日前)")
+# 預設的特徵集不含 as-of 組(那是第二輪搜尋的東西,由 agent_search 明確帶入)
+ASOF_GROUP = "as-of 關門"
 FEATS = [c for g, cols in GROUPS.items() for c in cols
-         if not (BID_TIME_SAFE and g in UNSAFE_GROUPS)]
+         if not (BID_TIME_SAFE and g in UNSAFE_GROUPS) and g != ASOF_GROUP]
+ASOF_FEATS = GROUPS[ASOF_GROUP]
 
 
 def _forecast_15min(area: str, idx: pd.DatetimeIndex) -> pd.DataFrame:
@@ -164,6 +170,39 @@ def build_panel(area: str, dev_source: pd.DataFrame | None = None) -> pd.DataFra
     for c in ("nb_de", "nb_se3", "nb_se4"):
         df[c] = e[c]
     df["nb_de_ramp"] = e["nb_de"].diff()
+
+    # ── ★ as-of 關門的特徵:**關門那一刻真正拿得到的最新值** ──
+    #
+    #   固定落後 2 天是**保守但笨**:它對所有目標一律砍到 48 小時前,而關門時其實
+    #   已經知道「不平衡價到 D−1 約 11:00」「day-ahead 價到 D−1 整天」。
+    #   正確做法是照關門時刻對齊 ——
+    #
+    #     gate = D−1 12:00 UTC(比 CET 的 12:00 更早,所以更保守)
+    #     不平衡價:窗口一律**結束在 gate**,於是距目標 13–37 小時而不是 48 小時
+    #     day-ahead 價:**落後 1 天就合法**(D−1 那天的價在 D−2 12:55 就公布了)
+    #
+    #   ⚠️ 實測這個修正**幾乎沒有差別**(dev 的 ACF 13h +0.008 / 24h +0.013 / 48h −0.004,
+    #      全都是 0)。但接法本身要對,「沒差」是量出來的結論,不是偷懶的理由。
+    #   🔴 **這裡踩過一次,leak canary 抓到的**:窗口若結束在 gate 那一格,就把
+    #      12:00–12:15 這一格算進去了 —— 那一格在關門那一刻**還沒交割**。
+    #      而且不平衡價交割完還要一段時間才發布 → 收在 gate 前 1 小時(≈ D−1 11:00),
+    #      正好對上「關門時不平衡價知道到 D−1 約 11:00」。
+    gate = idx.normalize() - pd.Timedelta(hours=12)
+    asof_t = gate - pd.Timedelta(hours=1)          # 最後一格確定已發布的時刻
+
+    def _asof(series: pd.Series, win: int, fn: str = "mean") -> pd.Series:
+        """`series` 在 asof_t 那一刻、往前 `win` 格的統計量。"""
+        r = getattr(series.rolling(win, min_periods=max(4, win // 8)), fn)()
+        return pd.Series(r.reindex(pd.DatetimeIndex(asof_t), method="ffill").to_numpy(), index=idx)
+
+    # 同一個 quarter-of-day 最近一次的值:gate 在 12:00,所以中午前的格取 D−1、中午後取 D−2
+    df["dev_lastq"] = np.where(qod <= 48, dev.shift(96), dev.shift(LAG2D))
+    df["dev_g24"] = _asof(dev, 96)
+    df["dev_g7d"] = _asof(dev, WEEK)
+    df["absdev_g7d"] = _asof(dev.abs(), WEEK)
+    df["dir_g7d"] = _asof((dev > 0).where(dev.notna()).astype(float), WEEK)
+    df["spot_l1d"] = spot.shift(96)           # day-ahead 價落後 1 天就合法
+    df["spot_g24"] = _asof(spot, 96)
 
     # ── 行事曆:關門時當然知道 ──
     df["qod_sin"] = np.sin(2 * np.pi * qod / 96)
@@ -412,12 +451,13 @@ def selfcheck() -> None:
     blind.loc[blind.index >= gate, ["ImbalancePriceEUR", "SpotPriceEUR"]] = np.nan
     masked = build_panel(area, dev_source=blind)
 
+    check = FEATS + ASOF_FEATS          # as-of 那組最容易接錯,一起驗
     rows = (full.index >= day) & (full.index < day + pd.Timedelta("1D"))
-    a, b = full.loc[rows, FEATS], masked.loc[rows, FEATS]
+    a, b = full.loc[rows, check], masked.loc[rows, check]
     diff = ~((a - b).abs().fillna(0) < 1e-9).all()
     assert not diff.any(), f"{area}: 這些特徵用到了關門後的資訊 → {list(diff[diff].index)}"
     print(f"✓ {area}: 挖掉 {gate:%Y-%m-%d %H:%M} 之後的價格,{day:%Y-%m-%d} 全部 "
-          f"{len(FEATS)} 個特徵不變 → 沒有 leak")
+          f"{len(check)} 個特徵不變(含 as-of 組)→ 沒有 leak")
 
     # 「作弊」對照:在測試期內訓練。**負面結果的可信度靠這個** —— 如果連 in-sample 都
     # 學不動,那是特徵/管線壞了;in-sample 學得動而 out-of-sample 不動,才是真的預測不了。
