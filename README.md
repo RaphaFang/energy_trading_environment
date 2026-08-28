@@ -66,6 +66,7 @@
 | 文件 | 內容 |
 | --- | --- |
 | **[`HANDOVER.md`](HANDOVER.md)** ← 🎯 **只讀這個就好** | 現在在做什麼、四階段、下一步、明確不做 |
+| [`FINDINGS_2026-08-28.md`](FINDINGS_2026-08-28.md) | 🆕 交易線第一回合的完整實驗紀錄(A 的電價模型、B 的負面結果、方法論教訓) |
 | [`DATA.md`](DATA.md) | 資料手冊:每個源哪來、留哪些欄、會不會 leak、踩過的坑 |
 | [`MODEL_2035.md`](MODEL_2035.md) | 熱側:8-agent 聯合 LP、驗證、2035 情境、限制 |
 | [`THESIS_DIRECTION.md`](THESIS_DIRECTION.md) | 熱側:研究問題、政策背景、**§10 收回過的說法** |
