@@ -21,9 +21,13 @@ from sklearn.preprocessing import StandardScaler
 
 # ★ 2026-08-28 掃過 44 個設定之後的最佳組合(`experiments.py`,兩個價區一致)。
 #   Ridge + Lasso + LightGBM 三者平均 · **只用最近 12 個月**重訓 · 目標改成「相對昨天同一小時的變化」
-#   DK1 MAE 19.12 → 17.10(rMAE 0.629 → 0.562)、DK2 22.04 → 18.10(0.683 → 0.561)
-#   🔑 它勝出的理由不只是平均低,**它是唯一在 2025-10 制度斷點後不退化的設定**
-#      (DK1 前半 17.14 / 後半 17.05)。機制見 `experiments.py` 的說明。
+#   🔴 **2026-08-28 修正**:原本報的 17.10 / 18.10 含兩個關門後才知道的特徵(見 LEAK_COLS)。
+#      去 leak 並加上合法替代之後的**正式數字**(跑 `baseline.py` 可重現):
+#        DK1  基準 Lasso 20.09(rMAE 0.66) → BEST **17.60(0.58、R² 0.754)**  −12.4%
+#        DK2  基準 Lasso 23.10(rMAE 0.72) → BEST **18.70(0.58、R² 0.736)**  −19.0%
+#      配對按日 bootstrap 的 ΔMAE:DK1 [−3.09, −2.10]、DK2 [−3.94, −3.05],**都遠離 0**。
+#   🔑 它勝出的理由不只是平均低,**它是唯一在 2025-10 制度斷點後不退化的設定**。
+#      機制見 `experiments.py` 的說明。
 BEST = {"refit": "roll12", "pooling": "pooled", "target": "detrend",
         "models": ("Ridge", "Lasso", "LightGBM")}
 
@@ -41,7 +45,20 @@ LEAK_COLS = {
     "wind_mwh",
     "solar_mwh",
     "residual_mwh",
+    # 🔴 2026-08-28 補上的兩個:**昨天同一小時的「實測」負載與殘餘**。
+    #    日前投標在 D−1 12:00 關門,而這兩欄對「D 日下午的目標」指的是 D−1 下午
+    #    —— 那是關門**之後**才量到的 → leak。
+    #    ⚠️ 對照:`price_lag24_eur` / `price_lag168_eur` 是**日前價**,D−2 12:55 就公布,**合法**。
+    #    實測代價:拿掉之後 BEST 的 MAE DK1 17.00 → 17.58、DK2 18.02 → 18.65,
+    #    ΔMAE 的 CI 都遠離 0 → 它們確實在偷分。
+    "load_lag24_mwh",
+    "residual_lag24_mwh",
 }
+
+# 上面那兩欄的**合法替代**:再往前推一天 = D−2 同一小時,關門時一定已公布。
+#   救回一部分:DK1 17.58 → 17.47(CI [−0.18, −0.04],顯著);DK2 18.65 → 18.57(不顯著)。
+GATE_SAFE_LAGS = {"load_lag24_mwh": "load_lag48_mwh",
+                  "residual_lag24_mwh": "residual_lag48_mwh"}
 
 
 def load_training(zone: str | None = None) -> pd.DataFrame:
@@ -56,9 +73,13 @@ def load_training(zone: str | None = None) -> pd.DataFrame:
     if zone:
         q += f" AND area='{zone}'"
     con = duckdb.connect(DB, read_only=True)
-    df = con.execute(q + " ORDER BY timestamp_utc").fetchdf()
+    df = con.execute(q + " ORDER BY area, timestamp_utc").fetchdf()
     con.close()
-    return df
+    # 合法替代:**逐區**再往前推 24 小時 → D−2 同一小時。
+    # ⚠️ 一定要 groupby("area"),不然兩區的列交錯,shift 會跨區拿到別區的值。
+    for src, dst in GATE_SAFE_LAGS.items():
+        df[dst] = df.groupby("area")[src].shift(24)
+    return df.sort_values("timestamp_utc").reset_index(drop=True)
 
 
 def _features(df: pd.DataFrame) -> list[str]:

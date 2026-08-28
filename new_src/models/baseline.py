@@ -8,6 +8,9 @@
 
 import os
 import sys
+import warnings
+
+warnings.filterwarnings("ignore")
 
 import numpy as np
 

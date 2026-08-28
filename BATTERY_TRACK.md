@@ -150,7 +150,7 @@ rMAE = MAE_模型 / MAE_naive        <1 才及格
 > **前半期 LightGBM 其實是全場最強(DK1 MAE 16.67)。**
 >
 > ✅ **對症修法有效**:只用最近 12 個月 + 改預測「相對昨天同一小時的變化」
-> → LightGBM 17.71、三模型平均 **17.10(rMAE 0.562)**。
+> → 三模型平均 **17.60(rMAE 0.58)/ DK2 18.70(0.58)**(去 leak 後的正式數字)。
 > **現行數字跑 `python new_src/models/baseline.py`;完整網格見 `new_src/models/experiments.py`。**
 
 ### 結果進程(LightGBM,€/MWh)
