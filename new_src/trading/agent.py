@@ -1,16 +1,28 @@
 """階段 0 的交易 agent 骨架 —— 用日前關門時真的看得到的東西,決定押哪一邊。
 
+━━━ 交割日 D 的完整時刻表(誰對哪一天、誰在哪一天發布)━━━━━━━━━━━━━
+
+    D−2 12:55  D−1 的日前價出清並公布      ← 所以「落後 1 天的現貨價」在關門時已知
+    D−1 12:00  **投標關門**,agent 在此刻決定 D 日全部 96 格的部位  ★ 決策時點
+    D−1 12:55  D 日的日前價才公布(15 分制上路後從 12:45 改成 12:55)
+    D   00:00  D 日開始交割
+    D   逐格後 不平衡價陸續公布(缺陷期驗價失敗的格要**隔個工作日 15:00**)
+
+🔑 **D 日的日前價在關門後 55 分鐘才出來 → 它不是特徵,它是目標的一半。**
+
 ━━━ 決策時點決定了特徵能用什麼 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-日前市場 **D−1 12:00 CET 關門**。agent 在那個時點替 D 日的每一格決定部位,
-交割後全部以不平衡價反向結算:
+agent 在 D−1 12:00 替 D 日的每一格決定部位,交割後全部以不平衡價反向結算:
 
     每格報酬 = 部位(±P MW) × (不平衡價 − 日前價) × 0.25h
 
 🔑 **日前價本身不是特徵** —— 關門時還沒出清。它是目標的一半。
-🔑 **價格衍生的特徵一律落後 ≥ 2 天**。理由不只是保守:mFRR EAM 的定價缺陷期間,
-   驗價失敗的格是**隔個工作日 15:00** 才人工補發的(見 `imbalance_regimes.py`)
-   → 「昨天的不平衡價」在關門時根本不一定存在。
+🔑 **價格衍生的特徵一律落後 ≥ 2 天。** 綁死的是**不平衡價**這一側:
+   D−1 那天的不平衡價要交割完才有,關門(D−1 12:00)時只到大約 D−1 11:00
+   → 目標若是 D 日下午的格,落後 1 天會去拿「還沒發生」的值 = leak。落後 2 天最壞情況
+   (目標 D 23:45 → 取 D−2 23:45)仍有 12 小時餘裕。
+   缺陷期還要再加一層:驗價失敗的格**隔個工作日 15:00** 才補發(見 `imbalance_regimes.py`)。
+   ⚪ 現貨價其實落後 1 天就安全(D−1 的價在 D−2 12:55 就公布了),這裡一起用 2 天只是從嚴。
 🔑 **天氣/再生能源只准用 `ForecastDayAhead`**;`Forecast5Hour`/`Forecast1Hour` 是日內欄位,
    在這裡用就是 leak(見 repo 的無 leak 規矩)。這也是留在日前的已知代價:
    arXiv 2510.16021 權重最大的 `forecast_delta` 我們用不了。
@@ -47,14 +59,28 @@ GROUPS = {
                          "wind_rel30", "solar_rel30"],
     "不平衡歷史": ["dev_q7", "dev_roll7", "absdev_roll7", "dir_share7", "dev_l2d"],
     "現貨歷史": ["spot_l2d", "spot_q7", "spot_roll7"],
-    # 本地負載:Energinet 的風光預測沒有負載,負載來自 ENTSO-E 的 Forecasted Load(日前發布)
+    # 🔴 本地負載:來自 ENTSO-E 的 Forecasted Load —— **發布時點沒有保證在關門前**,見 BID_TIME_SAFE
     "本地負載日前預測": ["load_da", "load_ramp", "own_residual"],
-    # 鄰國殘餘 = 鄰國的「日前負載預測 − 日前風光預測」(`entsoe/derived/`,**不是**
+    # 🔴 鄰國殘餘 = 鄰國的「日前負載預測 − 日前風光預測」(`entsoe/derived/`,**不是**
     # `new_data/residual/` —— 後者是用**實測**算的,拿來當特徵會 leak)。
     # 電池線的紀錄:加了鄰國資料,價格預測的 rMAE 才從 0.76 掉到 0.54,`de_residual` 是分裂次數第一。
+    # **但發布時點沒有保證在關門前**,見 BID_TIME_SAFE。
     "鄰國殘餘(ENTSO-E 日前)": ["nb_de", "nb_se3", "nb_se4", "nb_de_ramp"],
 }
-FEATS = [c for g in GROUPS.values() for c in g]
+
+# 🔴 **ENTSO-E 的日前預測不保證在投標關門前就發布。**
+#    法規(EU 543/2013)只要求日前負載預測與日前風光預測在 **D−1 18:00 CET 之前**公布
+#    —— 那比 12:00 的關門**晚六小時**。實務上多數 TSO 早上就發了,但那是慣例不是保證,
+#    而且我們存下來的 parquet 只有「對哪一格」沒有「何時發布」,**在地端驗不了**。
+#    → `True` = 只用確定在關門前拿得到的特徵(19 個);`False` = 全部 26 個,較寬鬆。
+#    ⚠️ 兩種設定的結論一樣(回收都跟 0 分不開),所以這個風險不影響階段 0 的負面結果 ——
+#      它只代表那個結果**偏保守**(給了 agent 可能不該有的資訊,它還是學不動)。
+#    📌 Energinet 自己的 `ForecastDayAhead` 風險低得多(它存在的目的就是服務中午那場拍賣),
+#      但同樣沒有發布時戳可證。要釘死就得去拉 ENTSO-E API 的 createdDateTime。
+BID_TIME_SAFE = True
+UNSAFE_GROUPS = ("本地負載日前預測", "鄰國殘餘(ENTSO-E 日前)")
+FEATS = [c for g, cols in GROUPS.items() for c in cols
+         if not (BID_TIME_SAFE and g in UNSAFE_GROUPS)]
 
 
 def _forecast_15min(area: str, idx: pd.DatetimeIndex) -> pd.DataFrame:
@@ -247,12 +273,58 @@ def ablation(df: pd.DataFrame, train_start, test_start) -> pd.DataFrame:
     base = money(np.sign(full["pred"].values), full["dev"].values) / oracle_money(full["dev"].values)
     rows = [{"特徵組": "(全部)", "回收 %": base * 100, "少賺 pp": 0.0}]
     for g, cols in GROUPS.items():
+        if not (set(cols) & set(FEATS)):    # BID_TIME_SAFE 關掉的組不用再抽一次
+            continue
         keep = [c for c in FEATS if c not in cols]
         r = walk_forward(df, keep, train_start, test_start)
         rec = money(np.sign(r["pred"].values), r["dev"].values) / oracle_money(r["dev"].values)
         rows.append({"特徵組": f"抽掉「{g}」", "回收 %": rec * 100,
                      "少賺 pp": (base - rec) * 100})
     return pd.DataFrame(rows).sort_values("少賺 pp", ascending=False)
+
+
+def target_ladder(df: pd.DataFrame, train_start, test_start) -> pd.DataFrame:
+    """**同一批特徵、同一段期間、同一個模型,只換目標。** 這支回答的是
+    「資料不是都在嗎,為什麼學不出東西」。
+
+        日前價 spot          → 學得動(R² ~0.5)
+        不平衡價 imb         → 幾乎學不動(R² ~0.05,而且那一點點是因為 imb 跟著 spot 走)
+        價差 dev = imb − spot → **完全學不動(R² ~0.00)**
+
+    🔑 **減掉 spot 等於把可預測的那一塊剛好扣掉**,剩下的是「實時到底出了什麼意外」。
+       所以問題不是資料不夠、也不是模型不好,**是這個目標本身就是別人的預測誤差**。"""
+    d = df.copy()
+    d["imb"] = d["spot"] + d["dev"]
+    d = d.dropna(subset=["dev", "spot"] + FEATS)
+    d = d[d.index >= train_start]
+    rows = []
+    for target, label in (("spot", "日前價 spot"), ("imb", "不平衡價 imb"),
+                          ("dev", "價差 dev = imb − spot")):
+        out = []
+        for m in sorted({q for q in d.index.tz_convert(None).to_period("M")}):
+            lo = m.to_timestamp().tz_localize("UTC")
+            hi = (m + 1).to_timestamp().tz_localize("UTC")
+            if lo < test_start:
+                continue
+            tr, te = d[d.index < lo], d[(d.index >= lo) & (d.index < hi)]
+            if len(tr) < 30 * 96 or not len(te):
+                continue
+            cut = int(len(tr) * 0.9)
+            mdl = lgb.LGBMRegressor(n_estimators=2000, learning_rate=0.03, num_leaves=63,
+                                    subsample=0.8, colsample_bytree=0.8,
+                                    random_state=0, verbose=-1)
+            mdl.fit(tr[FEATS].iloc[:cut], tr[target].iloc[:cut],
+                    eval_set=[(tr[FEATS].iloc[cut:], tr[target].iloc[cut:])],
+                    callbacks=[lgb.early_stopping(50, verbose=False)])
+            out.append(pd.DataFrame({"y": te[target].values, "p": mdl.predict(te[FEATS])},
+                                    index=te.index))
+        r = pd.concat(out)
+        y, q = r["y"].values, r["p"].values
+        rows.append({"目標": label, "R²": 1 - np.sum((y - q) ** 2) / np.sum((y - y.mean()) ** 2),
+                     "MAE": float(np.mean(np.abs(y - q))),
+                     "相關": float(np.corrcoef(q, y)[0, 1]),
+                     "實際 sd": float(y.std())})
+    return pd.DataFrame(rows)
 
 
 def horizon_probe(area: str) -> pd.DataFrame:
@@ -311,7 +383,12 @@ def main() -> None:
                 "只要小於這個,就**排不出順序**,不可以拿來宣稱哪組特徵重要。", "",
                 "### 特徵 ablation(用錢排序,不是用準度)", "",
                 ablation(df, D_DA15, test_start).to_markdown(index=False, floatfmt=",.1f"), ""]
-        rep += ["### 🔴 對照:訊號是不存在,還是關門之後才出現(**故意 leak**,只當診斷)", "",
+        rep += ["### 🔑 對照一:資料都在,換個目標就學得動", "",
+                target_ladder(df, D_DA15, test_start).to_markdown(index=False, floatfmt=",.3f"), "",
+                "**同一批特徵、同一段期間、同一個模型。** 日前價學得動;不平衡價幾乎學不動"
+                "(那一點點是因為它跟著日前價走);**減掉日前價之後什麼都不剩**。"
+                " → 減掉 spot 剛好把可預測的那一塊扣光,剩下的是**實時的意外**。", "",
+                "### 🔴 對照二:訊號是不存在,還是關門之後才出現(**故意 leak**,只當診斷)", "",
                 horizon_probe(area).to_markdown(index=False, floatfmt=",.3f"), "",
                 "**預測誤差只有交割前才知道,而它單獨一條規則就贏過全部日前特徵。**"
                 " → 綁住階段 0 的是**資訊集**,不是模型;這正是階段 1–3(自己的產出、彈性)"
