@@ -44,6 +44,8 @@
 | **年佔比對得上 ≠ 模型對**          | 尖峰鍋爐年佔比 5.95% vs 實測 5.12%,但**日內時點符號相反**(−0.50 vs +0.170)。水準的識別力太弱                                                                                         |
 | **季節性陷阱會一再出現**           | 「高價時出力更高」在同一天內幾乎都是反的。任何價格反應的檢定**一律先加日固定效果**                                                                                                   |
 | **`aFRRVWA*EUR` 的 0 是哨兵** | aFRR 沒啟動時那一欄是 **0 不是缺值**。直接拿去比大小,0 會偽裝成最低價,把不平衡價的下調側規則算歪 → 只有 `aFRRUpMW`/`aFRRDownMW` 非零時才准進候選 |
+| **樹模型不能外推價格水準** | 2025-10 日前轉 15 分後電價水準上移,**LightGBM 系統性低估 €23,逐月重訓也救不了**(擴張窗把新制度稀釋掉)。線性模型靠燃料價係數就跟上了。解法 = **只用最近 12 個月** + **改預測「相對昨天的變化」** |
+| **平均低 ≠ 穩** | 舊冠軍(逐月+逐小時)前半 16.99 後半 18.07;新冠軍前半 17.14 後半 17.05。**挑模型要看兩半期,不是只看總平均** |
 | **制度改變不要對齊成同一天** | 不平衡結算、不平衡**定價規則**、日前市場、定價缺陷修正是**四個不同日期**。合併成一個「15 分鐘改制」會把三件事混成一件 |
 | **參數有真值後要追預設值流到哪**   | θ_h 一有預設值,`run_model` 那個「垃圾原型當系統代理」就開始繳垃圾稅 → 尖峰鍋爐從 5.80% 暴衝到 71.65%。看起來像發現,其實是接線錯                                                      |
 | **代理模型的錯配不只被抓到那一個** | θ_h 會跳出來只因為它從 0 變非 0。同一個代理裡 `p_fuel`/`ef`/`Cv` **從一開始就錯配**(車隊 64.6% 其實是生質),只是沒有暴露時刻 → **車隊層級數字不可直接比對實測**(`STATUS.md` §9.4c)    |
@@ -101,7 +103,9 @@ new_src/
 ├── battery/     ★ 只剩兩支,留作交易線的地基:
 │                v1_single perfect vs naive 資訊階梯 → 階段 0 的 oracle
 │                fringe    保序迴歸估殘餘需求曲線
-└── models/      forecast.py 預測管道(LightGBM + rMAE + 無 leak 驗證)
+└── models/      forecast.py 建模唯一一份(含 ★ BEST 最佳設定)
+                 baseline.py 準度報表(MAE/RMSE/R²/rMAE + ★ BEST)
+                 experiments.py ★ 重訓頻率 × 逐小時 × 目標變換的網格(44 個設定)
 ```
 
 ## 怎麼跑
@@ -115,12 +119,18 @@ python new_src/heat/scenarios.py           # 2035 情境網格(約 4 分鐘)
 
 python new_src/trading/imbalance_regimes.py  # ★ 不平衡價四個制度期(約 5 秒)
 python new_src/trading/oracle.py             # ★ 階段 0 完美預知上界(約 5 秒)
-python new_src/trading/agent.py              # ★ 日前 agent + ablation(約 10 分鐘)
+python new_src/trading/agent.py              # ★ 日前 agent + ablation(約 20 分鐘)
+python new_src/trading/why_not_predictable.py # ★ B 為什麼學不動(約 3 分鐘)
+python new_src/trading/agent_search.py       # ★ B 的變體搜尋 + 獨立驗證窗(約 20 分鐘)
+
+python new_src/models/baseline.py            # 電價預測準度(含 ★ BEST,約 3 分鐘)
+python new_src/models/experiments.py         # ★ 完整網格(約 2.5 小時)
 ```
 
 🔴 **不平衡價不是一條序列,是四個制度期** —— 2025-03-04 / 03-18 / 09-30 / 12-08 各換一次規則。
 **乾淨的估計窗口是 2025-12-08 起**,跨接縫比較量到的是市場改革不是 agent 績效。見 `DATA.md` §12。
 
-⚠️ `load_duckdb.py` **尚未納入 15 分鐘電價** —— `training` view 右界仍停在 2025-09-30。
-2025-10 之後要自己讀 `price15_*.parquet` 並 `resample('1h').mean()`(價格是強度量,用 mean)。
+✅ `load_duckdb.py` **已納入 15 分鐘電價**(2026-08-28 查證,舊版 README 的警告作廢):
+`training` view 到 2026-08-21,2025-10 之後的逐時價由 `price15_*` 聚合而來,
+並用 `price_is_15min_derived` 標出那個結構性斷點。
 ⚠️ Energinet 的 **429 是 IP 級冷卻**(30s–600s 退避),而且**先抓再探索**。
