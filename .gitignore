@@ -11,9 +11,8 @@ new_data/**
 !new_data/**/
 # 空資料夾的佔位
 !new_data/**/.gitkeep
-# 出處(大小寫兩種都有)
+# 出處
 !new_data/**/SOURCE.md
-!new_data/**/source.md
 # 自動生成的資料字典
 !new_data/DATA_DICTIONARY.yaml
 
