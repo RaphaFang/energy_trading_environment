@@ -3,8 +3,19 @@ __pycache__/
 .ipynb_checkpoints/
 .ruff_cache/
 
-# 資料全部不進 git:76M parquet + duckdb,重跑 new_src/data/*.py 可重建
-new_data/
+# 資料全部不進 git:parquet + duckdb,重跑 new_src/data/*.py 可重建。
+# 🔑 但**骨架與出處要進 git** —— 資料夾結構、每個來源的 SOURCE.md、自動生成的資料字典。
+#    沒有它們,clone 下來的人不知道該有哪些資料夾、資料從哪來。
+new_data/**
+# 讓 git 能走進子資料夾(否則下面的例外全無效)
+!new_data/**/
+# 空資料夾的佔位
+!new_data/**/.gitkeep
+# 出處(大小寫兩種都有)
+!new_data/**/SOURCE.md
+!new_data/**/source.md
+# 自動生成的資料字典
+!new_data/DATA_DICTIONARY.yaml
 
 # graphify 產出,graphify update ./ 可重建
 graphify-out/

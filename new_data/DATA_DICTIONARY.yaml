@@ -1,0 +1,3433 @@
+# new_data/ 資料字典 —— 由 dictgen.py 自動生成,不要手改
+# 80 個檔
+files:
+  - path: DEA_data/DEA_electricity_and_district_heating.csv
+    format: csv
+    size_mb: 7.25
+    rows: 15581
+    columns:
+      - name: catalogue
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: ["Technology Data for Generation of Electricity and District Heating, v0018"]
+      - name: source_file
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [technology_data_for_el_and_dh_-_0018.xlsx]
+      - name: ws
+        type: VARCHAR
+        distinct: 74
+        null_pct: 0.0
+      - name: Technology
+        type: VARCHAR
+        distinct: 73
+        null_pct: 0.0
+      - name: cat
+        type: VARCHAR
+        distinct: 6
+        null_pct: 0.0
+        values: [Energy/technical data, Environment, Financial data, Regulation ability, Techinical and financial data with DH temperature of 80/40 degree, Technology-specific data]
+      - name: par
+        type: VARCHAR
+        distinct: 173
+        null_pct: 0.0
+      - name: unit
+        type: VARCHAR
+        distinct: 48
+        null_pct: 30.59
+      - name: est
+        type: VARCHAR
+        distinct: 3
+        null_pct: 0.0
+        values: [ctrl, lower, upper]
+      - name: year
+        type: BIGINT
+        min: 2015
+        max: 2050
+        null_pct: 0.0
+      - name: val
+        type: VARCHAR
+        distinct: 2954
+        null_pct: 0.0
+      - name: note
+        type: VARCHAR
+        distinct: 152
+        null_pct: 25.14
+      - name: note_text
+        type: VARCHAR
+        distinct: 229
+        null_pct: 60.46
+      - name: ref
+        type: VARCHAR
+        distinct: 110
+        null_pct: 37.48
+      - name: ref_text
+        type: VARCHAR
+        distinct: 176
+        null_pct: 40.58
+  - path: DEA_data/DEA_energy_storage.csv
+    format: csv
+    size_mb: 0.98
+    rows: 3181
+    columns:
+      - name: catalogue
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: ["Technology Data for Energy Storage, v0011"]
+      - name: source_file
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [technology_datasheet_for_energy_storage_-_0011.xlsx]
+      - name: ws
+        type: VARCHAR
+        distinct: 17
+        null_pct: 0.0
+      - name: Technology
+        type: VARCHAR
+        distinct: 16
+        null_pct: 0.0
+      - name: cat
+        type: VARCHAR
+        distinct: 4
+        null_pct: 0.0
+        values: [Energy/technical data, Financial data, Regulation ability, Technology-specific data]
+      - name: par
+        type: VARCHAR
+        distinct: 130
+        null_pct: 0.0
+      - name: unit
+        type: VARCHAR
+        distinct: 63
+        null_pct: 9.09
+      - name: est
+        type: VARCHAR
+        distinct: 3
+        null_pct: 0.0
+        values: [Lower, Upper, ctrl]
+      - name: year
+        type: BIGINT
+        min: 2015
+        max: 2050
+        null_pct: 0.0
+      - name: val
+        type: VARCHAR
+        distinct: 541
+        null_pct: 0.0
+      - name: note
+        type: VARCHAR
+        distinct: 75
+        null_pct: 33.26
+      - name: note_text
+        type: VARCHAR
+        distinct: 76
+        null_pct: 71.14
+      - name: ref
+        type: VARCHAR
+        distinct: 76
+        null_pct: 50.05
+      - name: ref_text
+        type: VARCHAR
+        distinct: 54
+        null_pct: 71.02
+  - path: calendar/calendar_dk1_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.62
+    rows: 66937
+    columns:
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-01-01 01:00:00+01:00"
+        max: "2026-08-21 02:00:00+02:00"
+        null_pct: 0.0
+      - name: area
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK1]
+      - name: hour
+        type: INTEGER
+        min: 0
+        max: 23
+        null_pct: 0.0
+      - name: dow
+        type: INTEGER
+        min: 0
+        max: 6
+        null_pct: 0.0
+      - name: month
+        type: INTEGER
+        min: 1
+        max: 12
+        null_pct: 0.0
+      - name: doy
+        type: INTEGER
+        min: 1
+        max: 366
+        null_pct: 0.0
+      - name: is_weekend
+        type: BOOLEAN
+        distinct: 2
+        null_pct: 0.0
+        values: [False, True]
+      - name: is_holiday
+        type: BOOLEAN
+        distinct: 2
+        null_pct: 0.0
+        values: [False, True]
+      - name: holiday_name
+        type: VARCHAR
+        distinct: 11
+        null_pct: 97.03
+        values: [Anden juledag, Anden pinsedag, Anden påskedag, Juledag, Kristi himmelfartsdag, Langfredag, Nytårsdag, Pinsedag, Påskedag, Skærtorsdag, Store bededag, null]
+      - name: hour_sin
+        type: DOUBLE
+        min: "-1.0"
+        max: 1.0
+        null_pct: 0.0
+      - name: hour_cos
+        type: DOUBLE
+        min: "-1.0"
+        max: 1.0
+        null_pct: 0.0
+      - name: doy_sin
+        type: DOUBLE
+        min: "-0.9999907397361901"
+        max: 0.9999907397361901
+        null_pct: 0.0
+      - name: doy_cos
+        type: DOUBLE
+        min: "-0.9999629591162655"
+        max: 1.0
+        null_pct: 0.0
+      - name: dow_sin
+        type: DOUBLE
+        min: "-0.9749279121818236"
+        max: 0.9749279121818236
+        null_pct: 0.0
+      - name: dow_cos
+        type: DOUBLE
+        min: "-0.9009688679024191"
+        max: 1.0
+        null_pct: 0.0
+      - name: daylight_hours
+        type: DOUBLE
+        min: 6.668746671785482
+        max: 17.331516423648875
+        null_pct: 0.0
+      - name: sunrise_hour
+        type: DOUBLE
+        min: 3.3342417881755626
+        max: 8.66562666410726
+        null_pct: 0.0
+      - name: sunset_hour
+        type: DOUBLE
+        min: 15.33437333589274
+        max: 20.66575821182444
+        null_pct: 0.0
+      - name: is_daylight
+        type: BOOLEAN
+        distinct: 2
+        null_pct: 0.0
+        values: [False, True]
+  - path: calendar/calendar_dk2_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.62
+    rows: 66937
+    columns:
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-01-01 01:00:00+01:00"
+        max: "2026-08-21 02:00:00+02:00"
+        null_pct: 0.0
+      - name: area
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK2]
+      - name: hour
+        type: INTEGER
+        min: 0
+        max: 23
+        null_pct: 0.0
+      - name: dow
+        type: INTEGER
+        min: 0
+        max: 6
+        null_pct: 0.0
+      - name: month
+        type: INTEGER
+        min: 1
+        max: 12
+        null_pct: 0.0
+      - name: doy
+        type: INTEGER
+        min: 1
+        max: 366
+        null_pct: 0.0
+      - name: is_weekend
+        type: BOOLEAN
+        distinct: 2
+        null_pct: 0.0
+        values: [False, True]
+      - name: is_holiday
+        type: BOOLEAN
+        distinct: 2
+        null_pct: 0.0
+        values: [False, True]
+      - name: holiday_name
+        type: VARCHAR
+        distinct: 11
+        null_pct: 97.03
+        values: [Anden juledag, Anden pinsedag, Anden påskedag, Juledag, Kristi himmelfartsdag, Langfredag, Nytårsdag, Pinsedag, Påskedag, Skærtorsdag, Store bededag, null]
+      - name: hour_sin
+        type: DOUBLE
+        min: "-1.0"
+        max: 1.0
+        null_pct: 0.0
+      - name: hour_cos
+        type: DOUBLE
+        min: "-1.0"
+        max: 1.0
+        null_pct: 0.0
+      - name: doy_sin
+        type: DOUBLE
+        min: "-0.9999907397361901"
+        max: 0.9999907397361901
+        null_pct: 0.0
+      - name: doy_cos
+        type: DOUBLE
+        min: "-0.9999629591162655"
+        max: 1.0
+        null_pct: 0.0
+      - name: dow_sin
+        type: DOUBLE
+        min: "-0.9749279121818236"
+        max: 0.9749279121818236
+        null_pct: 0.0
+      - name: dow_cos
+        type: DOUBLE
+        min: "-0.9009688679024191"
+        max: 1.0
+        null_pct: 0.0
+      - name: daylight_hours
+        type: DOUBLE
+        min: 6.740270027989323
+        max: 17.259988103256017
+        null_pct: 0.0
+      - name: sunrise_hour
+        type: DOUBLE
+        min: 3.3700059483719915
+        max: 8.62986498600534
+        null_pct: 0.0
+      - name: sunset_hour
+        type: DOUBLE
+        min: 15.37013501399466
+        max: 20.62999405162801
+        null_pct: 0.0
+      - name: is_daylight
+        type: BOOLEAN
+        distinct: 2
+        null_pct: 0.0
+        values: [False, True]
+  - path: carbon_price_ICAP/icap-graph-price-data-2019-09-01-2026-08-07.csv
+    format: csv
+    size_mb: 0.06
+    rows: 1517
+    columns:
+      - name: column0
+        type: VARCHAR
+        distinct: 1517
+        null_pct: 0.0
+      - name: "European Union Emissions Trading System (from 2019, download)"
+        type: VARCHAR
+        distinct: 2
+        null_pct: 0.0
+        values: [1, Exchange rate EUR/EUR]
+      - name: column2
+        type: VARCHAR
+        distinct: 83
+        null_pct: 0.0
+      - name: column3
+        type: VARCHAR
+        distinct: 2
+        null_pct: 0.0
+        values: [EUR, Market Currency]
+      - name: column4
+        type: VARCHAR
+        distinct: 1261
+        null_pct: 2.18
+      - name: column5
+        type: VARCHAR
+        distinct: 316
+        null_pct: 78.71
+      - name: column6
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [" "]
+  - path: entsoe/derived/residual_de_lu_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.99
+    rows: 60334
+    columns:
+      - name: de_lu_residual_mwh
+        type: DOUBLE
+        min: "-28140.060461499997"
+        max: 68540.93
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2026-08-21 01:00:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/derived/residual_se_3_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.93
+    rows: 60360
+    columns:
+      - name: se_3_residual_mwh
+        type: DOUBLE
+        min: 3118.66
+        max: 15871.26
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2026-08-21 01:00:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/derived/residual_se_4_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.90
+    rows: 60360
+    columns:
+      - name: se_4_residual_mwh
+        type: DOUBLE
+        min: "-569.1999999999998"
+        max: 4514.29
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2026-08-21 01:00:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/loadfc_de_lu_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 3.30
+    rows: 241336
+    columns:
+      - name: de_lu_Forecasted Load
+        type: DOUBLE
+        min: 30738.91
+        max: 78313.13
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2026-08-21 01:45:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/loadfc_dk_1_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.62
+    rows: 60384
+    columns:
+      - name: dk_1_Forecasted Load
+        type: DOUBLE
+        min: 1171.0
+        max: 4308.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2026-08-21 01:00:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/loadfc_dk_2_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.61
+    rows: 60384
+    columns:
+      - name: dk_2_Forecasted Load
+        type: DOUBLE
+        min: 819.0
+        max: 2952.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2026-08-21 01:00:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/loadfc_se_3_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.83
+    rows: 79155
+    columns:
+      - name: se_3_Forecasted Load
+        type: DOUBLE
+        min: 5130.0
+        max: 16856.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2026-08-21 01:45:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/loadfc_se_4_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.79
+    rows: 79155
+    columns:
+      - name: se_4_Forecasted Load
+        type: DOUBLE
+        min: 1301.0
+        max: 4921.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2026-08-21 01:45:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/ntc_de_lu_dk_1_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.72
+    rows: 83646
+    columns:
+      - name: ntc_de_lu_dk_1_0
+        type: DOUBLE
+        min: 535.0
+        max: 3500.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2026-08-21 01:45:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/ntc_de_lu_dk_2_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.33
+    rows: 38711
+    columns:
+      - name: ntc_de_lu_dk_2_0
+        type: DOUBLE
+        min: 0.0
+        max: 1000.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2024-02-29 23:00:00+01:00"
+        null_pct: 0.0
+  - path: entsoe/ntc_dk_1_de_lu_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.74
+    rows: 83646
+    columns:
+      - name: ntc_dk_1_de_lu_0
+        type: DOUBLE
+        min: 100.0
+        max: 3500.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2026-08-21 01:45:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/ntc_dk_1_nl_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.52
+    rows: 60384
+    columns:
+      - name: ntc_dk_1_nl_0
+        type: DOUBLE
+        min: 0.0
+        max: 700.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2026-08-21 01:00:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/ntc_dk_2_de_lu_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.33
+    rows: 38711
+    columns:
+      - name: ntc_dk_2_de_lu_0
+        type: DOUBLE
+        min: 0.0
+        max: 649.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2024-02-29 23:00:00+01:00"
+        null_pct: 0.0
+  - path: entsoe/ntc_nl_dk_1_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.52
+    rows: 60384
+    columns:
+      - name: ntc_nl_dk_1_0
+        type: DOUBLE
+        min: 0.0
+        max: 700.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2026-08-21 01:00:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/oc_dk_1_dk_2_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.38
+    rows: 44089
+    columns:
+      - name: oc_dk_1_dk_2_0
+        type: DOUBLE
+        min: 0.0
+        max: 590.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2024-10-29 23:00:00+01:00"
+        null_pct: 0.0
+  - path: entsoe/oc_dk_1_no_2_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.38
+    rows: 44089
+    columns:
+      - name: oc_dk_1_no_2_0
+        type: DOUBLE
+        min: 0.0
+        max: 1730.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2024-10-29 23:00:00+01:00"
+        null_pct: 0.0
+  - path: entsoe/oc_dk_1_se_3_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.38
+    rows: 44089
+    columns:
+      - name: oc_dk_1_se_3_0
+        type: DOUBLE
+        min: 0.0
+        max: 740.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2024-10-29 23:00:00+01:00"
+        null_pct: 0.0
+  - path: entsoe/oc_dk_2_dk_1_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.38
+    rows: 44089
+    columns:
+      - name: oc_dk_2_dk_1_0
+        type: DOUBLE
+        min: 0.0
+        max: 600.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2024-10-29 23:00:00+01:00"
+        null_pct: 0.0
+  - path: entsoe/oc_dk_2_se_4_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.38
+    rows: 44089
+    columns:
+      - name: oc_dk_2_se_4_0
+        type: DOUBLE
+        min: 0.0
+        max: 1700.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2024-10-29 23:00:00+01:00"
+        null_pct: 0.0
+  - path: entsoe/oc_no_2_dk_1_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.38
+    rows: 44089
+    columns:
+      - name: oc_no_2_dk_1_0
+        type: DOUBLE
+        min: 0.0
+        max: 1730.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2024-10-29 23:00:00+01:00"
+        null_pct: 0.0
+  - path: entsoe/oc_se_3_dk_1_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.38
+    rows: 44089
+    columns:
+      - name: oc_se_3_dk_1_0
+        type: DOUBLE
+        min: 0.0
+        max: 715.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2024-10-29 23:00:00+01:00"
+        null_pct: 0.0
+  - path: entsoe/oc_se_4_dk_2_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.38
+    rows: 44089
+    columns:
+      - name: oc_se_4_dk_2_0
+        type: DOUBLE
+        min: 0.0
+        max: 1300.0
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2024-10-29 23:00:00+01:00"
+        null_pct: 0.0
+  - path: entsoe/price_de_lu_2019-10-01_2025-10-01.parquet
+    format: parquet
+    size_mb: 0.63
+    rows: 52615
+    columns:
+      - name: price_de_lu_0
+        type: DOUBLE
+        min: "-500.0"
+        max: 936.28
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2025-10-01 02:00:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/price_de_lu_2025-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.35
+    rows: 31105
+    columns:
+      - name: price_de_lu_0
+        type: DOUBLE
+        min: "-499.99"
+        max: 747.1
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2025-10-01 02:00:00+02:00"
+        max: "2026-08-21 02:00:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/price_no_2_2019-10-01_2025-10-01.parquet
+    format: parquet
+    size_mb: 0.62
+    rows: 52615
+    columns:
+      - name: price_no_2_0
+        type: DOUBLE
+        min: "-61.84"
+        max: 898.25
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2025-10-01 02:00:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/price_no_2_2025-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.35
+    rows: 31105
+    columns:
+      - name: price_no_2_0
+        type: DOUBLE
+        min: "-34.94"
+        max: 398.07
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2025-10-01 02:00:00+02:00"
+        max: "2026-08-21 02:00:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/price_se_3_2019-10-01_2025-10-01.parquet
+    format: parquet
+    size_mb: 0.60
+    rows: 52615
+    columns:
+      - name: price_se_3_0
+        type: DOUBLE
+        min: "-60.04"
+        max: 799.97
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2025-10-01 02:00:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/price_se_3_2025-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.35
+    rows: 31105
+    columns:
+      - name: price_se_3_0
+        type: DOUBLE
+        min: "-14.49"
+        max: 518.28
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2025-10-01 02:00:00+02:00"
+        max: "2026-08-21 02:00:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/price_se_4_2019-10-01_2025-10-01.parquet
+    format: parquet
+    size_mb: 0.62
+    rows: 52615
+    columns:
+      - name: price_se_4_0
+        type: DOUBLE
+        min: "-60.04"
+        max: 799.97
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2025-10-01 02:00:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/price_se_4_2025-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.36
+    rows: 31105
+    columns:
+      - name: price_se_4_0
+        type: DOUBLE
+        min: "-15.59"
+        max: 532.21
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2025-10-01 02:00:00+02:00"
+        max: "2026-08-21 02:00:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/resfc_de_lu_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 5.73
+    rows: 241536
+    columns:
+      - name: de_lu_Solar
+        type: DOUBLE
+        min: 0.0
+        max: 58527.90975
+        null_pct: 0.0
+      - name: de_lu_Wind Offshore
+        type: DOUBLE
+        min: 12.23
+        max: 7541.93
+        null_pct: 0.0
+      - name: de_lu_Wind Onshore
+        type: DOUBLE
+        min: 151.0
+        max: 46982.42771
+        null_pct: 0.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2026-08-21 01:45:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/resfc_se_3_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 1.42
+    rows: 79347
+    columns:
+      - name: se_3_Wind Onshore
+        type: DOUBLE
+        min: 19.3
+        max: 3862.068
+        null_pct: 0.0
+      - name: se_3_Solar
+        type: DOUBLE
+        min: 0.0
+        max: 1671.94
+        null_pct: 23.98
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2026-08-21 01:45:00+02:00"
+        null_pct: 0.0
+  - path: entsoe/resfc_se_4_2019-10-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 1.38
+    rows: 79347
+    columns:
+      - name: se_4_Wind Onshore
+        type: DOUBLE
+        min: 6.88
+        max: 2087.27
+        null_pct: 0.0
+      - name: se_4_Solar
+        type: DOUBLE
+        min: 0.0
+        max: 848.56
+        null_pct: 23.98
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-01 02:00:00+02:00"
+        max: "2026-08-21 01:45:00+02:00"
+        null_pct: 0.0
+  - path: ept/ens_el_og_fjernvarmesektor_1972_2024__dokumentation.parquet
+    format: parquet
+    size_mb: 0.00
+    rows: 40
+    columns:
+      - name: Dato for udgivelsen
+        type: VARCHAR
+        distinct: 25
+        null_pct: 25.0
+      - name: "24/02/2026, Elproduktion fra solenergi i 2021 er rettet i forhold til den oprindelige version fra 31/10/2025. "
+        type: VARCHAR
+        distinct: 17
+        null_pct: 50.0
+  - path: ept/ens_el_og_fjernvarmesektor_1972_2024__el.parquet
+    format: parquet
+    size_mb: 0.01
+    rows: 1378
+    columns:
+      - name: energivare_id
+        type: VARCHAR
+        distinct: 26
+        null_pct: 0.0
+      - name: energivare_dk
+        type: VARCHAR
+        distinct: 26
+        null_pct: 0.0
+      - name: aar
+        type: BIGINT
+        min: 1972
+        max: 2024
+        null_pct: 0.0
+      - name: el_produktion_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 142343.68
+        null_pct: 0.0
+      - name: raavareforbrug_til_elproduktion_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 327717.1
+        null_pct: 13.86
+  - path: ept/ens_el_og_fjernvarmesektor_1972_2024__elkapacitet.parquet
+    format: parquet
+    size_mb: 0.00
+    rows: 366
+    columns:
+      - name: aktoer_dk
+        type: VARCHAR
+        distinct: 7
+        null_pct: 0.0
+        values: [Centrale elproducerende anlæg, Centrale kraftvarmeanlæg, Decentrale anlæg, Sekundære producenter, Solenergi, Vandkraft, Vindkraft]
+      - name: aar
+        type: BIGINT
+        min: 1972
+        max: 2024
+        null_pct: 0.0
+      - name: elkapacitet_MW
+        type: DOUBLE
+        min: 0.0
+        max: 7511.5011
+        null_pct: 23.22
+  - path: ept/ens_el_og_fjernvarmesektor_1972_2024__fjernvarme.parquet
+    format: parquet
+    size_mb: 0.02
+    rows: 1590
+    columns:
+      - name: energivare_id
+        type: VARCHAR
+        distinct: 26
+        null_pct: 0.0
+      - name: energivare_dk
+        type: VARCHAR
+        distinct: 26
+        null_pct: 0.0
+      - name: el_detaljeret
+        type: VARCHAR
+        distinct: 5
+        null_pct: 0.0
+        values: [El anvendt i elpatroner (elkedler), El anvendt i forb. m. overskudsvarme, El anvendt i forb. m. solvarmeanlæg, El anvendt i varmepumper, Ikke relevant]
+      - name: aar
+        type: BIGINT
+        min: 1972
+        max: 2024
+        null_pct: 0.0
+      - name: fjernvarme_produktion_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 56707.84
+        null_pct: 0.0
+      - name: raavareforbrug_til_fjernvarmeproduktion_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 72357.56
+        null_pct: 14.4
+  - path: ept/ens_el_og_fjernvarmesektor_1972_2024__varmekapacitet.parquet
+    format: parquet
+    size_mb: 0.00
+    rows: 15
+    columns:
+      - name: aktoer_dk
+        type: VARCHAR
+        distinct: 5
+        null_pct: 0.0
+        values: [Centrale kraftvarmeanlæg, Decentrale anlæg, Fjernvarmeanlæg, Sekundære fjernvarmeproducenter, Sekundære kraftvarmeproducenter]
+      - name: aar
+        type: BIGINT
+        min: 2022
+        max: 2024
+        null_pct: 0.0
+      - name: antal_anlaeg
+        type: BIGINT
+        min: 22
+        max: 1977
+        null_pct: 0.0
+      - name: elkapacitet_MW
+        type: DOUBLE
+        min: 0.0
+        max: 4552.5
+        null_pct: 0.0
+      - name: varmekapacitet_MW
+        type: DOUBLE
+        min: 695.57
+        max: 15613.624
+        null_pct: 0.0
+      - name: andel_samlet_varmelevering
+        type: DOUBLE
+        min: 4.4695354199188815
+        max: 33.09702573972187
+        null_pct: 0.0
+  - path: ept/ens_el_og_fjernvarmesektor_1972_2024__vindkapacitet.parquet
+    format: parquet
+    size_mb: 0.01
+    rows: 242
+    columns:
+      - name: anlaeg_stoerrelse
+        type: VARCHAR
+        distinct: 4
+        null_pct: 0.0
+        values: ["- 499 kW", 1000 - 1999 kW, 2000 -  kW, 500 - 999 kW]
+      - name: placering
+        type: VARCHAR
+        distinct: 2
+        null_pct: 0.0
+        values: [Hav, Land]
+      - name: aar
+        type: BIGINT
+        min: 1977
+        max: 2024
+        null_pct: 0.0
+      - name: vindkraftkapacitet_MW
+        type: DOUBLE
+        min: 0.052000000000000005
+        max: 2736.75
+        null_pct: 0.0
+      - name: antal_anlaeg
+        type: BIGINT
+        min: 1
+        max: 3726
+        null_pct: 0.0
+  - path: ept/ept_produktion_2023_2025.parquet
+    format: parquet
+    size_mb: 0.58
+    rows: 8637
+    columns:
+      - name: vaerk_id
+        type: DOUBLE
+        min: 1.0
+        max: 2493.0
+        null_pct: 1.51
+      - name: vrkanl_ny
+        type: VARCHAR
+        distinct: 2978
+        null_pct: 1.51
+      - name: aar
+        type: BIGINT
+        min: 2023
+        max: 2025
+        null_pct: 0.0
+      - name: vaerk_postnr
+        type: DOUBLE
+        min: 1432.0
+        max: 9990.0
+        null_pct: 1.76
+      - name: vaerk_postdistrikt
+        type: VARCHAR
+        distinct: 423
+        null_pct: 1.76
+      - name: vaerk_kommune
+        type: BIGINT
+        min: 101
+        max: 860
+        null_pct: 0.0
+      - name: fv_net
+        type: DOUBLE
+        min: 2.0
+        max: 888.0
+        null_pct: 8.54
+      - name: fv_net_navn
+        type: VARCHAR
+        distinct: 361
+        null_pct: 8.54
+      - name: selskab_id
+        type: DOUBLE
+        min: 1.0
+        max: 2437.0
+        null_pct: 1.76
+      - name: cvr
+        type: DOUBLE
+        min: 10007127.0
+        max: 89711215.0
+        null_pct: 1.76
+      - name: selskab_navn
+        type: VARCHAR
+        distinct: 592
+        null_pct: 1.76
+      - name: vrktypeid
+        type: VARCHAR
+        distinct: 6
+        null_pct: 0.0
+        values: [CE, DC, ER, FJ, LO, VA]
+      - name: vrktypenavn
+        type: VARCHAR
+        distinct: 6
+        null_pct: 0.0
+        values: [Centralt værk, Decentralt værk, Erhvervsværk, Fjernvarmeværk, Lokalt værk, Vandkraftværk]
+      - name: anlaeg_navn
+        type: VARCHAR
+        distinct: 1551
+        null_pct: 1.76
+      - name: anlaegstype_navn
+        type: VARCHAR
+        distinct: 27
+        null_pct: 0.0
+      - name: DB07
+        type: DOUBLE
+        min: 11100.0
+        max: 960300.0
+        null_pct: 1.51
+      - name: NR117
+        type: DOUBLE
+        min: 10000.0
+        max: 960000.0
+        null_pct: 1.51
+      - name: aktoer
+        type: VARCHAR
+        distinct: 8
+        null_pct: 0.0
+        values: [cel, cev, fvv, kvt, pel, pev, pvp, vkt]
+      - name: idriftdato
+        type: TIMESTAMP
+        min: "1900-09-01 00:00:00"
+        max: "2025-12-23 00:00:00"
+        null_pct: 0.0
+      - name: skrotdato
+        type: TIMESTAMP
+        min: "2023-01-02 00:00:00"
+        max: "2026-01-15 00:00:00"
+        null_pct: 97.34
+      - name: indfyretkapacitet_MW
+        type: DOUBLE
+        min: 0.0
+        max: 1555.0
+        null_pct: 0.0
+      - name: elkapacitet_MW
+        type: DOUBLE
+        min: 0.0
+        max: 640.0
+        null_pct: 0.0
+      - name: varmekapacitet_MW
+        type: DOUBLE
+        min: 0.0
+        max: 583.0
+        null_pct: 0.0
+      - name: brutto_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 14738.9475718282
+        null_pct: 0.0
+      - name: varmeprod_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 7612.67001
+        null_pct: 0.0
+      - name: varmelev_TJ
+        type: DOUBLE
+        min: "-0.1071684"
+        max: 7612.67001
+        null_pct: 0.0
+      - name: elprod_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 5506.5024
+        null_pct: 0.0
+      - name: ellev_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 5006.66472
+        null_pct: 0.0
+      - name: andel_varmelev
+        type: DOUBLE
+        min: 0.0
+        max: 1.0
+        null_pct: 0.0
+      - name: andel_el
+        type: DOUBLE
+        min: 0.0
+        max: 1.0
+        null_pct: 0.0
+      - name: andel_process
+        type: DOUBLE
+        min: 0.0
+        max: 1.0
+        null_pct: 0.0
+      - name: kul_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 8321.366697
+        null_pct: 99.57
+      - name: orimulsion_TJ
+        type: DOUBLE
+        min: null
+        max: null
+        null_pct: 100.0
+      - name: petrokoks_TJ
+        type: DOUBLE
+        min: null
+        max: null
+        null_pct: 100.0
+      - name: fuelolie_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 288.5152591999999
+        null_pct: 98.71
+      - name: spildolie_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 0.776286
+        null_pct: 99.66
+      - name: gasolie_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 104.063773429
+        null_pct: 75.15
+      - name: raffinaderigas_TJ
+        type: DOUBLE
+        min: 1743.8853432
+        max: 2148.96458725
+        null_pct: 99.97
+      - name: lpg_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 2.6711784
+        null_pct: 96.09
+      - name: naturgas_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 1451.7460188
+        null_pct: 61.6
+      - name: affald_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 5965.9164
+        null_pct: 98.54
+      - name: biogas_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 217.408
+        null_pct: 92.61
+      - name: halm_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 2755.696
+        null_pct: 95.51
+      - name: skovflis_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 9687.224456
+        null_pct: 92.42
+      - name: trae- og biomasseaffald_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 2160.181
+        null_pct: 96.56
+      - name: traepiller_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 13809.7925
+        null_pct: 95.53
+      - name: bio-olie_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 125.6685
+        null_pct: 97.26
+      - name: braendselsfrit_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 1612.453
+        null_pct: 96.89
+      - name: solenergi_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 272.7648
+        null_pct: 94.78
+      - name: vandkraft_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 60.7276228896
+        null_pct: 99.03
+      - name: elektricitet_TJ
+        type: DOUBLE
+        min: 0.0
+        max: 1050.83381
+        null_pct: 88.25
+      - name: omgivelsesvarme_TJ
+        type: DOUBLE
+        min: "-1.24272"
+        max: 538.354152
+        null_pct: 94.8
+      - name: version
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [250626_125pct]
+  - path: ept/ept_stamdata_anlaeg_2025.parquet
+    format: parquet
+    size_mb: 0.14
+    rows: 2916
+    columns:
+      - name: aar
+        type: BIGINT
+        min: 2025
+        max: 2025
+        null_pct: 0.0
+      - name: selskab_id
+        type: DOUBLE
+        min: 1.0
+        max: 2437.0
+        null_pct: 1.78
+      - name: vaerk_id
+        type: DOUBLE
+        min: 1.0
+        max: 2493.0
+        null_pct: 1.51
+      - name: vrkanl_ny
+        type: VARCHAR
+        distinct: 2872
+        null_pct: 1.51
+      - name: selskab_navn
+        type: VARCHAR
+        distinct: 552
+        null_pct: 1.78
+      - name: vaerk_postnr
+        type: DOUBLE
+        min: 1432.0
+        max: 9990.0
+        null_pct: 1.78
+      - name: vaerk_postdistrikt
+        type: VARCHAR
+        distinct: 421
+        null_pct: 1.78
+      - name: vaerk_kommune
+        type: BIGINT
+        min: 101
+        max: 860
+        null_pct: 0.0
+      - name: vrktypenavn
+        type: VARCHAR
+        distinct: 6
+        null_pct: 0.0
+        values: [Centralt værk, Decentralt værk, Erhvervsværk, Fjernvarmeværk, Lokalt værk, Vandkraftværk]
+      - name: fv_net
+        type: DOUBLE
+        min: 2.0
+        max: 888.0
+        null_pct: 8.4
+      - name: fv_net_navn
+        type: VARCHAR
+        distinct: 358
+        null_pct: 8.4
+      - name: anlaeg_navn
+        type: VARCHAR
+        distinct: 1495
+        null_pct: 1.78
+      - name: anlaegstype_navn
+        type: VARCHAR
+        distinct: 27
+        null_pct: 0.0
+      - name: aktoer
+        type: VARCHAR
+        distinct: 8
+        null_pct: 0.0
+        values: [cel, cev, fvv, kvt, pel, pev, pvp, vkt]
+      - name: idriftdato
+        type: TIMESTAMP
+        min: "1900-09-01 00:00:00"
+        max: "2025-12-23 00:00:00"
+        null_pct: 0.0
+      - name: skrotdato
+        type: TIMESTAMP
+        min: "2025-01-14 00:00:00"
+        max: "2026-01-15 00:00:00"
+        null_pct: 98.9
+      - name: elkapacitet_MW
+        type: DOUBLE
+        min: 0.0
+        max: 640.0
+        null_pct: 0.0
+      - name: varmekapacitet_MW
+        type: DOUBLE
+        min: 0.0
+        max: 583.0
+        null_pct: 0.0
+      - name: Hovedbrændsel
+        type: VARCHAR
+        distinct: 19
+        null_pct: 0.0
+      - name: Hovedbrændselsgruppe
+        type: VARCHAR
+        distinct: 13
+        null_pct: 0.0
+      - name: Kul_andel
+        type: DOUBLE
+        min: 0.0
+        max: 0.995260434047405
+        null_pct: 99.69
+      - name: Olie_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.0
+        null_pct: 13.72
+      - name: Naturgas_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.000000000049014
+        null_pct: 67.25
+      - name: Affald_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.0
+        null_pct: 98.73
+      - name: Biogas_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.0
+        null_pct: 93.69
+      - name: Fast biomasse_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.000000000004746
+        null_pct: 13.72
+      - name: Bio-olie_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.0
+        null_pct: 98.05
+      - name: Braendselsfrit_andel
+        type: DOUBLE
+        min: 0.4944747222305863
+        max: 1.0
+        null_pct: 97.33
+      - name: Solenergi_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.000000000021724
+        null_pct: 94.92
+      - name: Vandkraft_andel
+        type: DOUBLE
+        min: 1.0
+        max: 1.0
+        null_pct: 99.25
+      - name: Elektricitet_andel
+        type: DOUBLE
+        min: 0.0
+        max: 2.673325499412456
+        null_pct: 87.35
+      - name: Omgivelsesvarme_andel
+        type: DOUBLE
+        min: "-1.673325499412456"
+        max: 0.8215728940006216
+        null_pct: 94.07
+  - path: ept/ept_stamdata_vaerk_2025.parquet
+    format: parquet
+    size_mb: 0.08
+    rows: 1226
+    columns:
+      - name: aar
+        type: BIGINT
+        min: 2025
+        max: 2025
+        null_pct: 0.0
+      - name: selskab_id
+        type: DOUBLE
+        min: 1.0
+        max: 2437.0
+        null_pct: 3.34
+      - name: vaerk_id
+        type: DOUBLE
+        min: 1.0
+        max: 2493.0
+        null_pct: 3.1
+      - name: antal_anlæg
+        type: BIGINT
+        min: 1
+        max: 13
+        null_pct: 0.0
+      - name: selskab_navn
+        type: VARCHAR
+        distinct: 552
+        null_pct: 3.34
+      - name: vaerk_postnr
+        type: DOUBLE
+        min: 1432.0
+        max: 9990.0
+        null_pct: 3.34
+      - name: vaerk_postdistrikt
+        type: VARCHAR
+        distinct: 421
+        null_pct: 3.34
+      - name: vaerk_kommune
+        type: BIGINT
+        min: 101
+        max: 860
+        null_pct: 0.0
+      - name: vrktypenavn
+        type: VARCHAR
+        distinct: 6
+        null_pct: 0.0
+        values: [Centralt værk, Decentralt værk, Erhvervsværk, Fjernvarmeværk, Lokalt værk, Vandkraftværk]
+      - name: fv_net
+        type: DOUBLE
+        min: 2.0
+        max: 888.0
+        null_pct: 15.01
+      - name: fv_net_navn
+        type: VARCHAR
+        distinct: 358
+        null_pct: 15.01
+      - name: indfyretkapacitet_MW
+        type: DOUBLE
+        min: 0.002
+        max: 867.0
+        null_pct: 0.0
+      - name: elkapacitet_MW
+        type: DOUBLE
+        min: 0.0
+        max: 385.0
+        null_pct: 0.0
+      - name: varmekapacitet_MW
+        type: DOUBLE
+        min: 0.0
+        max: 485.0
+        null_pct: 0.0
+      - name: varmeakkumuleringstank_m3
+        type: DOUBLE
+        min: 0.0
+        max: 55000.0
+        null_pct: 15.82
+      - name: Hovedbrændsel
+        type: VARCHAR
+        distinct: 18
+        null_pct: 0.0
+      - name: Hovedbrændselsgruppe
+        type: VARCHAR
+        distinct: 13
+        null_pct: 0.0
+      - name: Kul_andel
+        type: DOUBLE
+        min: 0.0
+        max: 0.9593624863638659
+        null_pct: 9.3
+      - name: Olie_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.0
+        null_pct: 9.3
+      - name: Naturgas_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.0
+        null_pct: 9.3
+      - name: Affald_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.0
+        null_pct: 9.3
+      - name: Biogas_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.0
+        null_pct: 9.3
+      - name: Fast biomasse_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.000000000000084
+        null_pct: 9.3
+      - name: Bio-olie_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.0
+        null_pct: 9.3
+      - name: Braendselsfrit_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.0
+        null_pct: 9.3
+      - name: Solenergi_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.0
+        null_pct: 9.3
+      - name: Vandkraft_andel
+        type: DOUBLE
+        min: 0.0
+        max: 1.0
+        null_pct: 9.3
+      - name: Elektricitet_andel
+        type: DOUBLE
+        min: 0.0
+        max: 2.673325499412456
+        null_pct: 9.3
+      - name: Omgivelsesvarme_andel
+        type: DOUBLE
+        min: "-1.673325499412456"
+        max: 0.7327963691047231
+        null_pct: 9.3
+  - path: forecast/forecast_dk1_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 6.82
+    rows: 178361
+    columns:
+      - name: HourUTC
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-31 11:00:00+01:00"
+        max: "2026-08-20 23:00:00+02:00"
+        null_pct: 0.0
+      - name: HourDK
+        type: VARCHAR
+        distinct: 59490
+        null_pct: 0.0
+      - name: PriceArea
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK1]
+      - name: ForecastType
+        type: VARCHAR
+        distinct: 3
+        null_pct: 0.0
+        values: [Offshore Wind, Onshore Wind, Solar]
+      - name: ForecastDayAhead
+        type: DOUBLE
+        min: 0.0
+        max: 3490.0
+        null_pct: 0.51
+      - name: ForecastIntraday
+        type: DOUBLE
+        min: "-11.625"
+        max: 3717.125
+        null_pct: 20.87
+      - name: Forecast5Hour
+        type: DOUBLE
+        min: "-33.041668"
+        max: 3427.5
+        null_pct: 5.24
+      - name: Forecast1Hour
+        type: DOUBLE
+        min: "-63.333332"
+        max: 4268.791504
+        null_pct: 5.25
+      - name: ForecastCurrent
+        type: DOUBLE
+        min: "-32.166668"
+        max: 3774.625
+        null_pct: 0.0
+      - name: TimestampUTC
+        type: VARCHAR
+        distinct: 169377
+        null_pct: 0.0
+      - name: TimestampDK
+        type: VARCHAR
+        distinct: 169377
+        null_pct: 0.0
+  - path: forecast/forecast_dk2_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 6.05
+    rows: 178361
+    columns:
+      - name: HourUTC
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-10-31 11:00:00+01:00"
+        max: "2026-08-20 23:00:00+02:00"
+        null_pct: 0.0
+      - name: HourDK
+        type: VARCHAR
+        distinct: 59490
+        null_pct: 0.0
+      - name: PriceArea
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK2]
+      - name: ForecastType
+        type: VARCHAR
+        distinct: 3
+        null_pct: 0.0
+        values: [Offshore Wind, Onshore Wind, Solar]
+      - name: ForecastDayAhead
+        type: DOUBLE
+        min: "-2.416667"
+        max: 981.688354
+        null_pct: 0.51
+      - name: ForecastIntraday
+        type: DOUBLE
+        min: "-10.791667"
+        max: 979.755859
+        null_pct: 20.87
+      - name: Forecast5Hour
+        type: DOUBLE
+        min: "-21.708334"
+        max: 979.755859
+        null_pct: 5.24
+      - name: Forecast1Hour
+        type: DOUBLE
+        min: "-10.458333"
+        max: 982.65332
+        null_pct: 5.25
+      - name: ForecastCurrent
+        type: DOUBLE
+        min: "-84.041664"
+        max: 1055.625
+        null_pct: 0.0
+      - name: TimestampUTC
+        type: VARCHAR
+        distinct: 169314
+        null_pct: 0.0
+      - name: TimestampDK
+        type: VARCHAR
+        distinct: 169314
+        null_pct: 0.0
+  - path: fuel/api2_coal_usd_t_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.06
+    rows: 1756
+    columns:
+      - name: Adj Close
+        type: DOUBLE
+        min: 38.599998474121094
+        max: 438.3500061035156
+        null_pct: 0.0
+      - name: Close
+        type: DOUBLE
+        min: 38.599998474121094
+        max: 438.3500061035156
+        null_pct: 0.0
+      - name: High
+        type: DOUBLE
+        min: 38.599998474121094
+        max: 438.3500061035156
+        null_pct: 0.0
+      - name: Low
+        type: DOUBLE
+        min: 30.350000381469727
+        max: 438.3500061035156
+        null_pct: 0.0
+      - name: Open
+        type: DOUBLE
+        min: 30.350000381469727
+        max: 438.3500061035156
+        null_pct: 0.0
+      - name: Volume
+        type: BIGINT
+        min: 0
+        max: 550
+        null_pct: 0.0
+      - name: date
+        type: TIMESTAMP
+        min: "2019-01-02 00:00:00"
+        max: "2025-12-26 00:00:00"
+        null_pct: 0.0
+  - path: fuel/dst_kn8y_biomass_trade_raw_2019_2025.parquet
+    format: parquet
+    size_mb: 0.03
+    rows: 3380
+    columns:
+      - name: VARE
+        type: VARCHAR
+        distinct: 9
+        null_pct: 0.0
+        values: ["12130000 Halm og avner af korn, ubearbejdet, også hakket, formalet, presset eller som pellets", 44011100 Brænde af nåletræ, 44011200 Brænde af andet end nåletræ, "44012100 Nåletræ i form af flis eller spåner (undtagen af den art, der hovedsagelig anvendes til parfumer, farmaceutiske produkter, insektbekæmpelsesmidler, afsvampningsmidler og lignende eller til farvning eller garvning)", "44012200 Træ i form af flis eller spåner (undtagen af den art, der hovedsagelig anvendes til fremstilling af parfumer, farmaceutiske produkter, insektbekæmpelsesmidler, afsvampningsmidler og lignende eller til farvning eller garvning og...", "44012210 Træ i form af flis eller spåner, af eukalyptus", "44012290 Træ i form af flis eller spåner (undtagen af den art, der hovedsagelig anvendes til fremstilling af parfumer, farmaceutiske produkter, insektbekæmpelsesmidler, afsvampningsmidler og lignende eller til farvning eller garvning og...", "44013100 Savsmuld, agglomereret til træpiller", 44013900 Savsmuld og træaffald agglomereret til blokke eller lignende former (undtagen træpiller og briketter)]
+      - name: INDUD
+        type: VARCHAR
+        distinct: 2
+        null_pct: 0.0
+        values: [Eksport, Import]
+      - name: LAND
+        type: VARCHAR
+        distinct: 84
+        null_pct: 0.0
+      - name: ENHED
+        type: VARCHAR
+        distinct: 2
+        null_pct: 0.0
+        values: [Kilo, Kroner]
+      - name: TID
+        type: BIGINT
+        min: 2019
+        max: 2025
+        null_pct: 0.0
+      - name: INDHOLD
+        type: VARCHAR
+        distinct: 2974
+        null_pct: 0.0
+  - path: fuel/eua_co2_eur_t_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.02
+    rows: 1483
+    columns:
+      - name: Close
+        type: DOUBLE
+        min: 14.6
+        max: 97.51
+        null_pct: 0.0
+      - name: date
+        type: TIMESTAMP
+        min: "2019-09-02 00:00:00"
+        max: "2026-06-30 00:00:00"
+        null_pct: 0.0
+  - path: fuel/eurusd_rate_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.08
+    rows: 1988
+    columns:
+      - name: Adj Close
+        type: DOUBLE
+        min: 0.9596191644668579
+        max: 1.2341108322143555
+        null_pct: 0.05
+      - name: Close
+        type: DOUBLE
+        min: 0.9596191644668579
+        max: 1.2341108322143555
+        null_pct: 0.05
+      - name: High
+        type: DOUBLE
+        min: 0.9670057892799377
+        max: 1.2350252866744995
+        null_pct: 0.0
+      - name: Low
+        type: DOUBLE
+        min: 0.954016387462616
+        max: 1.2266929149627686
+        null_pct: 0.0
+      - name: Open
+        type: DOUBLE
+        min: 0.9596191644668579
+        max: 1.2337758541107178
+        null_pct: 0.0
+      - name: Volume
+        type: BIGINT
+        min: 0
+        max: 0
+        null_pct: 0.0
+      - name: date
+        type: TIMESTAMP
+        min: "2019-01-01 00:00:00"
+        max: "2026-08-21 00:00:00"
+        null_pct: 0.0
+  - path: fuel/se_energimyndigheten_tradbransle_sek_mwh_1993q1_latest.parquet
+    format: parquet
+    size_mb: 0.01
+    rows: 1050
+    columns:
+      - name: kvartal
+        type: VARCHAR
+        distinct: 133
+        null_pct: 0.0
+      - name: sortiment
+        type: VARCHAR
+        distinct: 6
+        null_pct: 0.0
+        values: [Biprodukter, Frästorv, Förädlade, Returträ, Skogsflis, Stycketorv]
+      - name: anvandare
+        type: VARCHAR
+        distinct: 2
+        null_pct: 0.0
+        values: [Industri, Värmeverk]
+      - name: sek_per_mwh
+        type: BIGINT
+        min: 55
+        max: 641
+        null_pct: 0.0
+  - path: fuel/ttf_gas_eur_mwh_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.09
+    rows: 1921
+    columns:
+      - name: Adj Close
+        type: DOUBLE
+        min: 3.509999990463257
+        max: 339.1960144042969
+        null_pct: 0.0
+      - name: Close
+        type: DOUBLE
+        min: 3.509999990463257
+        max: 339.1960144042969
+        null_pct: 0.0
+      - name: High
+        type: DOUBLE
+        min: 3.8499999046325684
+        max: 339.1960144042969
+        null_pct: 0.0
+      - name: Low
+        type: DOUBLE
+        min: 3.5
+        max: 339.1960144042969
+        null_pct: 0.0
+      - name: Open
+        type: DOUBLE
+        min: 3.700000047683716
+        max: 339.1960144042969
+        null_pct: 0.0
+      - name: Volume
+        type: BIGINT
+        min: 0
+        max: 47189
+        null_pct: 0.0
+      - name: date
+        type: TIMESTAMP
+        min: "2019-01-02 00:00:00"
+        max: "2026-08-20 00:00:00"
+        null_pct: 0.0
+  - path: generation/generation_dk_1_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 5.76
+    rows: 102904
+    columns:
+      - name: Biomass
+        type: DOUBLE
+        min: 0.0
+        max: 4393.88
+        null_pct: 0.07
+      - name: Fossil Gas
+        type: DOUBLE
+        min: 0.0
+        max: 955.287
+        null_pct: 0.07
+      - name: "Fossil Gas | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 120.0
+        null_pct: 100.0
+      - name: Fossil Hard coal
+        type: DOUBLE
+        min: 0.0
+        max: 1632.63
+        null_pct: 0.08
+      - name: Fossil Oil
+        type: DOUBLE
+        min: 0.0
+        max: 70.61
+        null_pct: 0.07
+      - name: Hydro Run-of-river and poundage
+        type: DOUBLE
+        min: 0.0
+        max: 3.89
+        null_pct: 16.82
+      - name: Other renewable
+        type: DOUBLE
+        min: 0.0
+        max: 8.41
+        null_pct: 16.38
+      - name: Solar
+        type: DOUBLE
+        min: 0.0
+        max: 3122.54
+        null_pct: 0.65
+      - name: Waste
+        type: DOUBLE
+        min: 4.85364
+        max: 174.962
+        null_pct: 0.07
+      - name: "Waste | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 57.0
+        null_pct: 100.0
+      - name: Wind Offshore
+        type: DOUBLE
+        min: 0.0
+        max: 3272.64
+        null_pct: 0.11
+      - name: Wind Onshore
+        type: DOUBLE
+        min: 0.0
+        max: 3709.16
+        null_pct: 0.07
+      - name: "Biomass | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: "Fossil Hard coal | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: "Fossil Oil | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: "Hydro Run-of-river and poundage | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: "Other renewable | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: "Solar | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: "Wind Offshore | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: "Wind Onshore | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-01-01 01:00:00+01:00"
+        max: "2026-08-21 01:45:00+02:00"
+        null_pct: 0.0
+  - path: generation/generation_dk_2_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 4.92
+    rows: 102868
+    columns:
+      - name: Biomass
+        type: DOUBLE
+        min: 0.0
+        max: 802.642
+        null_pct: 0.04
+      - name: Fossil Gas
+        type: DOUBLE
+        min: 0.0
+        max: 888.8
+        null_pct: 0.04
+      - name: Fossil Hard coal
+        type: DOUBLE
+        min: 0.0
+        max: 3599.38
+        null_pct: 13.33
+      - name: Fossil Oil
+        type: DOUBLE
+        min: 0.0
+        max: 4275.2
+        null_pct: 0.04
+      - name: Solar
+        type: DOUBLE
+        min: 0.0
+        max: 1224.95
+        null_pct: 2.87
+      - name: Waste
+        type: DOUBLE
+        min: 0.0
+        max: 353.373
+        null_pct: 0.04
+      - name: Wind Offshore
+        type: DOUBLE
+        min: 0.0
+        max: 975.59
+        null_pct: 0.33
+      - name: Wind Onshore
+        type: DOUBLE
+        min: 0.0
+        max: 723.67
+        null_pct: 0.03
+      - name: "Biomass | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: "Fossil Gas | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: "Fossil Hard coal | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: "Fossil Oil | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: "Solar | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: "Waste | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: "Wind Offshore | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: "Wind Onshore | consumption"
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 100.0
+      - name: timestamp_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-01-01 01:00:00+01:00"
+        max: "2026-08-21 01:45:00+02:00"
+        null_pct: 0.0
+  - path: heat/varmelast_ckb_2021_2026.parquet
+    format: parquet
+    size_mb: 4.30
+    rows: 49379
+    columns:
+      - name: timestamp
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2021-01-01 00:00:00+01:00"
+        max: "2026-08-20 16:00:00+02:00"
+        null_pct: 0.0
+      - name: BE-EO-CTR-EFF
+        type: DOUBLE
+        min: 0.0
+        max: 1971.5332743325832
+        null_pct: 0.0
+      - name: BE-VL-AFFALD-EF
+        type: DOUBLE
+        min: 7.265128930416667
+        max: 450.1747843424167
+        null_pct: 0.0
+      - name: BE-VL-BG-EF
+        type: DOUBLE
+        min: 0.0
+        max: 9.105255921666666
+        null_pct: 0.0
+      - name: BE-VL-BIO-EF
+        type: DOUBLE
+        min: 0.0
+        max: 32.47906398766666
+        null_pct: 0.0
+      - name: BE-VL-EVO-EF
+        type: DOUBLE
+        min: 0.0
+        max: 97.99804687508333
+        null_pct: 0.0
+      - name: BE-VL-IO-EF
+        type: DOUBLE
+        min: 0.0
+        max: 48.027508735
+        null_pct: 0.0
+      - name: BE-VL-KRAFTV-EF
+        type: DOUBLE
+        min: 0.0
+        max: 1855.3161824543333
+        null_pct: 0.0
+      - name: BE-VL-OD-EF
+        type: DOUBLE
+        min: 0.0
+        max: 0.114188001
+        null_pct: 0.0
+      - name: BE-VL-SOL-EF
+        type: DOUBLE
+        min: 0.0
+        max: 1.2488801380833334
+        null_pct: 0.0
+      - name: BE-VL-SPIDS-GAS-EF
+        type: DOUBLE
+        min: 0.0
+        max: 867.36996968575
+        null_pct: 0.0
+      - name: BE-VL-SPIDS-OLIE-EF
+        type: DOUBLE
+        min: 0.0
+        max: 663.72810363775
+        null_pct: 0.0
+      - name: BE-VL-TOTAL-FAK
+        type: DOUBLE
+        min: 0.0
+        max: 65.19644927966667
+        null_pct: 0.0
+      - name: BE-VL-VP-EF
+        type: DOUBLE
+        min: 0.0
+        max: 25.907225132
+        null_pct: 0.0
+      - name: DAP-VEKS-FORBRUG-EFF
+        type: DOUBLE
+        min: 0.0
+        max: 823.5954844155833
+        null_pct: 0.0
+      - name: LOCAL
+        type: DOUBLE
+        min: 0.0
+        max: 0.0
+        null_pct: 0.0
+      - name: TOTAL
+        type: DOUBLE
+        min: 138.31684335825
+        max: 2872.3515558294166
+        null_pct: 0.0
+  - path: heating_consumption/heating_el_municipality_2021-01-01_2026-08-23.parquet
+    format: parquet
+    size_mb: 134.38
+    rows: 31064864
+    columns:
+      - name: TimeUTC
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2021-01-01 00:00:00+01:00"
+        max: "2026-08-14 23:00:00+02:00"
+        null_pct: 0.0
+      - name: TimeDK
+        type: TIMESTAMP
+        min: "2021-01-01 00:00:00"
+        max: "2026-08-14 23:00:00"
+        null_pct: 0.0
+      - name: MunicipalityCode
+        type: BIGINT
+        min: 101
+        max: 860
+        null_pct: 0.0
+      - name: Municipality
+        type: VARCHAR
+        distinct: 98
+        null_pct: 0.0
+      - name: RegionName
+        type: VARCHAR
+        distinct: 5
+        null_pct: 0.0
+        values: [Region Hovedstaden, Region Midtjylland, Region Nordjylland, Region Sjælland, Region Syddanmark]
+      - name: HousingCategory
+        type: VARCHAR
+        distinct: 5
+        null_pct: 0.0
+        values: [Andet, Etageejendom, Fritidshuse, Parcel- og rækkehuse, Ukendt]
+      - name: HeatingCategory
+        type: VARCHAR
+        distinct: 3
+        null_pct: 0.0
+        values: ["-", Andet, Elvarme eller varmepumpe]
+      - name: ConsumptionkWh
+        type: DOUBLE
+        min: 0.0
+        max: 111927.257
+        null_pct: 0.0
+  - path: heating_consumption/heating_el_national_2021-01-01_2026-08-23.parquet
+    format: parquet
+    size_mb: 2.77
+    rows: 481384
+    columns:
+      - name: TimeUTC
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2021-01-01 00:00:00+01:00"
+        max: "2026-08-14 23:00:00+02:00"
+        null_pct: 0.0
+      - name: TimeDK
+        type: TIMESTAMP
+        min: "2021-01-01 00:00:00"
+        max: "2026-08-14 23:00:00"
+        null_pct: 0.0
+      - name: HousingCategory
+        type: VARCHAR
+        distinct: 5
+        null_pct: 0.0
+        values: [Andet, Etageejendom, Fritidshuse, Parcel- og rækkehuse, Ukendt]
+      - name: HeatingCategory
+        type: VARCHAR
+        distinct: 3
+        null_pct: 0.0
+        values: ["-", Andet, Elvarme eller varmepumpe]
+      - name: ConsumptionkWh
+        type: DOUBLE
+        min: 1240.438
+        max: 1227765.448
+        null_pct: 0.0
+  - path: heating_stock/bygb40_antal_2019_latest.parquet
+    format: parquet
+    size_mb: 0.07
+    rows: 18560
+    columns:
+      - name: OMRÅDE
+        type: VARCHAR
+        distinct: 116
+        null_pct: 0.0
+      - name: MÆNGDE4
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [Bygninger (antal)]
+      - name: OPVARM
+        type: VARCHAR
+        distinct: 10
+        null_pct: 0.0
+        values: [Anden opvarmningsform, Centralvarme med fast brændsel, Centralvarme med naturgas, Centralvarme med oliefyr, Elovne eller elpaneler, Fjernvarme, Ingen eller uoplyst opvarmning, Ovne med fast brændstof, Ovne med olie eller petroleum, Varmepumpe]
+      - name: TID
+        type: BIGINT
+        min: 2011
+        max: 2026
+        null_pct: 0.0
+      - name: INDHOLD
+        type: BIGINT
+        min: 0
+        max: 2806651
+        null_pct: 0.0
+  - path: heating_stock/bygb40_m2_2019_latest.parquet
+    format: parquet
+    size_mb: 0.04
+    rows: 18560
+    columns:
+      - name: OMRÅDE
+        type: VARCHAR
+        distinct: 116
+        null_pct: 0.0
+      - name: MÆNGDE4
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [Kvadratmeter (1000 m2)]
+      - name: OPVARM
+        type: VARCHAR
+        distinct: 10
+        null_pct: 0.0
+        values: [Anden opvarmningsform, Centralvarme med fast brændsel, Centralvarme med naturgas, Centralvarme med oliefyr, Elovne eller elpaneler, Fjernvarme, Ingen eller uoplyst opvarmning, Ovne med fast brændstof, Ovne med olie eller petroleum, Varmepumpe]
+      - name: TID
+        type: BIGINT
+        min: 2011
+        max: 2026
+        null_pct: 0.0
+      - name: INDHOLD
+        type: BIGINT
+        min: "-1"
+        max: 331398
+        null_pct: 0.0
+  - path: imbalance/imbalance15_dk1_2025-03-01_2026-08-27.parquet
+    format: parquet
+    size_mb: 3.20
+    rows: 51883
+    columns:
+      - name: TimeUTC
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2025-03-04 12:15:00+01:00"
+        max: "2026-08-26 23:45:00+02:00"
+        null_pct: 0.0
+      - name: TimeDK
+        type: VARCHAR
+        distinct: 51879
+        null_pct: 0.0
+      - name: PriceArea
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK1]
+      - name: SatisfiedDemand
+        type: DOUBLE
+        min: "-1820.0"
+        max: 1224.0
+        null_pct: 0.06
+      - name: ImbalancePriceEUR
+        type: DOUBLE
+        min: "-3214.74"
+        max: 9385.25
+        null_pct: 0.0
+      - name: ImbalancePriceDKK
+        type: DOUBLE
+        min: "-24028.9"
+        max: 70019.6
+        null_pct: 0.0
+      - name: SpotPriceEUR
+        type: DOUBLE
+        min: "-42.09"
+        max: 786.83
+        null_pct: 0.0
+      - name: DominatingDirection
+        type: DOUBLE
+        min: "-1.0"
+        max: 1.0
+        null_pct: 0.03
+      - name: aFRRUpMW
+        type: DOUBLE
+        min: 0.0
+        max: 93.49
+        null_pct: 0.0
+      - name: aFRRVWAUpEUR
+        type: DOUBLE
+        min: "-133.76"
+        max: 3959.19
+        null_pct: 0.0
+      - name: aFRRVWAUpDKK
+        type: DOUBLE
+        min: "-999.94"
+        max: 29572.77
+        null_pct: 0.0
+      - name: aFRRDownMW
+        type: DOUBLE
+        min: "-121.56"
+        max: 0.0
+        null_pct: 0.0
+      - name: aFRRVWADownEUR
+        type: DOUBLE
+        min: "-3573.24"
+        max: 550.21
+        null_pct: 0.0
+      - name: aFRRVWADownDKK
+        type: DOUBLE
+        min: "-26654.94"
+        max: 4110.95
+        null_pct: 0.0
+      - name: mFRRMarginalPriceUpEUR
+        type: DOUBLE
+        min: "-42.09"
+        max: 9385.25
+        null_pct: 0.0
+      - name: mFRRMarginalPriceUpDKK
+        type: DOUBLE
+        min: "-314.54"
+        max: 70019.6
+        null_pct: 0.0
+      - name: mFRRMarginalPriceDownEUR
+        type: DOUBLE
+        min: "-792.5"
+        max: 786.83
+        null_pct: 0.0
+      - name: mFRRMarginalPriceDownDKK
+        type: DOUBLE
+        min: "-5912.92"
+        max: 5881.95
+        null_pct: 0.0
+  - path: imbalance/imbalance15_dk2_2025-03-01_2026-08-27.parquet
+    format: parquet
+    size_mb: 3.19
+    rows: 51883
+    columns:
+      - name: TimeUTC
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2025-03-04 12:15:00+01:00"
+        max: "2026-08-26 23:45:00+02:00"
+        null_pct: 0.0
+      - name: TimeDK
+        type: VARCHAR
+        distinct: 51879
+        null_pct: 0.0
+      - name: PriceArea
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK2]
+      - name: SatisfiedDemand
+        type: DOUBLE
+        min: "-1808.0"
+        max: 819.0
+        null_pct: 0.06
+      - name: ImbalancePriceEUR
+        type: DOUBLE
+        min: "-3776.6"
+        max: 8127.27
+        null_pct: 0.0
+      - name: ImbalancePriceDKK
+        type: DOUBLE
+        min: "-28171.93"
+        max: 60741.59
+        null_pct: 0.0
+      - name: SpotPriceEUR
+        type: DOUBLE
+        min: "-25.35"
+        max: 911.14
+        null_pct: 0.0
+      - name: DominatingDirection
+        type: DOUBLE
+        min: "-1.0"
+        max: 1.0
+        null_pct: 0.03
+      - name: aFRRUpMW
+        type: DOUBLE
+        min: 0.0
+        max: 47.67
+        null_pct: 0.0
+      - name: aFRRVWAUpEUR
+        type: DOUBLE
+        min: "-128.62"
+        max: 4111.81
+        null_pct: 0.0
+      - name: aFRRVWAUpDKK
+        type: DOUBLE
+        min: "-960.89"
+        max: 30672.46
+        null_pct: 0.0
+      - name: aFRRDownMW
+        type: DOUBLE
+        min: "-81.13"
+        max: 0.0
+        null_pct: 0.0
+      - name: aFRRVWADownEUR
+        type: DOUBLE
+        min: "-3776.6"
+        max: 1005.13
+        null_pct: 0.0
+      - name: aFRRVWADownDKK
+        type: DOUBLE
+        min: "-28171.93"
+        max: 7500.18
+        null_pct: 0.0
+      - name: mFRRMarginalPriceUpEUR
+        type: DOUBLE
+        min: "-25.35"
+        max: 8127.27
+        null_pct: 0.0
+      - name: mFRRMarginalPriceUpDKK
+        type: DOUBLE
+        min: "-189.1"
+        max: 60741.59
+        null_pct: 0.0
+      - name: mFRRMarginalPriceDownEUR
+        type: DOUBLE
+        min: "-792.5"
+        max: 911.14
+        null_pct: 0.0
+      - name: mFRRMarginalPriceDownDKK
+        type: DOUBLE
+        min: "-5912.92"
+        max: 6806.76
+        null_pct: 0.0
+  - path: imbalance/imbalance_dk1_2019-01-01_2026-08-27.parquet
+    format: parquet
+    size_mb: 2.81
+    rows: 54105
+    columns:
+      - name: HourUTC
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-01-01 00:00:00+01:00"
+        max: "2025-03-04 12:00:00+01:00"
+        null_pct: 0.0
+      - name: HourDK
+        type: VARCHAR
+        distinct: 54103
+        null_pct: 0.0
+      - name: PriceArea
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK1]
+      - name: mFRRUpActBal
+        type: DOUBLE
+        min: 0.0
+        max: 1071.5
+        null_pct: 0.09
+      - name: mFRRDownActBal
+        type: DOUBLE
+        min: 0.0
+        max: 1447.099976
+        null_pct: 0.09
+      - name: mFRRUpActSpec
+        type: DOUBLE
+        min: 0.0
+        max: 704.0
+        null_pct: 62.14
+      - name: mFRRDownActSpec
+        type: DOUBLE
+        min: 0.0
+        max: 2241.080078
+        null_pct: 62.14
+      - name: ImbalanceMWh
+        type: DOUBLE
+        min: "-1857.0"
+        max: 1248.0
+        null_pct: 62.25
+      - name: ImbalancePriceEUR
+        type: DOUBLE
+        min: "-2200.0"
+        max: 4704.43
+        null_pct: 0.0
+      - name: ImbalancePriceDKK
+        type: DOUBLE
+        min: "-16392.199219"
+        max: 35000.0
+        null_pct: 0.0
+      - name: BalancingPowerPriceUpEUR
+        type: DOUBLE
+        min: "-129.960007"
+        max: 4704.43
+        null_pct: 0.0
+      - name: BalancingPowerPriceUpDKK
+        type: DOUBLE
+        min: "-968.059998"
+        max: 35000.0
+        null_pct: 8.85
+      - name: BalancingPowerPriceDownEUR
+        type: DOUBLE
+        min: "-2200.0"
+        max: 871.0
+        null_pct: 0.0
+      - name: BalancingPowerPriceDownDKK
+        type: DOUBLE
+        min: "-16392.199219"
+        max: 6477.189941
+        null_pct: 8.85
+  - path: imbalance/imbalance_dk2_2019-01-01_2026-08-27.parquet
+    format: parquet
+    size_mb: 2.81
+    rows: 54105
+    columns:
+      - name: HourUTC
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-01-01 00:00:00+01:00"
+        max: "2025-03-04 12:00:00+01:00"
+        null_pct: 0.0
+      - name: HourDK
+        type: VARCHAR
+        distinct: 54103
+        null_pct: 0.0
+      - name: PriceArea
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK2]
+      - name: mFRRUpActBal
+        type: DOUBLE
+        min: 0.0
+        max: 563.0
+        null_pct: 0.0
+      - name: mFRRDownActBal
+        type: DOUBLE
+        min: 0.0
+        max: 408.799988
+        null_pct: 0.0
+      - name: mFRRUpActSpec
+        type: DOUBLE
+        min: 0.0
+        max: 485.0
+        null_pct: 62.14
+      - name: mFRRDownActSpec
+        type: DOUBLE
+        min: 0.0
+        max: 553.669983
+        null_pct: 62.14
+      - name: ImbalanceMWh
+        type: DOUBLE
+        min: "-1265.0"
+        max: 1128.599976
+        null_pct: 62.25
+      - name: ImbalancePriceEUR
+        type: DOUBLE
+        min: "-2200.0"
+        max: 1344.158325
+        null_pct: 0.0
+      - name: ImbalancePriceDKK
+        type: DOUBLE
+        min: "-16392.199219"
+        max: 10000.669922
+        null_pct: 0.0
+      - name: BalancingPowerPriceUpEUR
+        type: DOUBLE
+        min: "-59.959999"
+        max: 1344.158325
+        null_pct: 0.0
+      - name: BalancingPowerPriceUpDKK
+        type: DOUBLE
+        min: "-447.429993"
+        max: 10000.669922
+        null_pct: 8.85
+      - name: BalancingPowerPriceDownEUR
+        type: DOUBLE
+        min: "-2200.0"
+        max: 871.0
+        null_pct: 0.0
+      - name: BalancingPowerPriceDownDKK
+        type: DOUBLE
+        min: "-16392.199219"
+        max: 6477.189941
+        null_pct: 8.85
+  - path: plandata/varmeplansomraader.parquet
+    format: parquet
+    size_mb: 0.15
+    rows: 1694
+    columns:
+      - name: uuid
+        type: VARCHAR
+        distinct: 1694
+        null_pct: 0.0
+      - name: temakode
+        type: BIGINT
+        min: 1207
+        max: 1207
+        null_pct: 0.0
+      - name: temanavn
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [Varmeplansområde]
+      - name: objekt_id
+        type: BIGINT
+        min: 11190616
+        max: 12194569
+        null_pct: 0.0
+      - name: statuskode
+        type: BIGINT
+        min: 3
+        max: 4
+        null_pct: 0.0
+      - name: status
+        type: VARCHAR
+        distinct: 2
+        null_pct: 0.0
+        values: [Aflyst, Vedtaget]
+      - name: datovedt
+        type: BIGINT
+        min: 20100101
+        max: 20260729
+        null_pct: 0.0
+      - name: datoaflyst
+        type: DOUBLE
+        min: 20210329.0
+        max: 20260722.0
+        null_pct: 79.99
+      - name: komcvr
+        type: VARCHAR
+        distinct: 85
+        null_pct: 0.0
+      - name: komnavn
+        type: VARCHAR
+        distinct: 85
+        null_pct: 0.0
+      - name: plannavn
+        type: VARCHAR
+        distinct: 145
+        null_pct: 0.0
+      - name: delnavn
+        type: VARCHAR
+        distinct: 1577
+        null_pct: 0.0
+      - name: type1207
+        type: BIGINT
+        min: 1
+        max: 2
+        null_pct: 0.0
+      - name: vaerdi1207
+        type: VARCHAR
+        distinct: 2
+        null_pct: 0.0
+        values: [Fjernvarme, Individuel varmeforsyning]
+      - name: samletvarme
+        type: DOUBLE
+        min: 7.0
+        max: 819677.0
+        null_pct: 89.96
+      - name: forvarme
+        type: DOUBLE
+        min: 7.0
+        max: 52261.0
+        null_pct: 96.87
+      - name: fkonv
+        type: DOUBLE
+        min: 1.0
+        max: 24205.0
+        null_pct: 96.34
+      - name: mkonv
+        type: DOUBLE
+        min: 1.0
+        max: 7000.0
+        null_pct: 94.16
+      - name: konvstartaar
+        type: DOUBLE
+        min: 0.0
+        max: 9999.0
+        null_pct: 46.64
+      - name: konvslutaar
+        type: DOUBLE
+        min: 0.0
+        max: 9999.0
+        null_pct: 46.64
+      - name: virkcvr
+        type: VARCHAR
+        distinct: 94
+        null_pct: 72.49
+      - name: virknavn
+        type: VARCHAR
+        distinct: 95
+        null_pct: 72.49
+      - name: doklink
+        type: INTEGER
+        min: null
+        max: null
+        null_pct: 100.0
+      - name: weblink
+        type: VARCHAR
+        distinct: 70
+        null_pct: 47.87
+      - name: systid_fra
+        type: VARCHAR
+        distinct: 1694
+        null_pct: 0.0
+      - name: systid_til
+        type: INTEGER
+        min: null
+        max: null
+        null_pct: 100.0
+      - name: samfundoeko
+        type: BOOLEAN
+        distinct: 2
+        null_pct: 35.71
+        values: [False, True, null]
+      - name: komnr
+        type: BIGINT
+        min: 151
+        max: 860
+        null_pct: 0.0
+      - name: _lag
+        type: VARCHAR
+        distinct: 2
+        null_pct: 0.0
+        values: [aflyst, vedtaget]
+      - name: datovedt_d
+        type: TIMESTAMP
+        min: "2010-01-01 00:00:00"
+        max: "2026-07-29 00:00:00"
+        null_pct: 0.0
+      - name: datoaflyst_d
+        type: TIMESTAMP
+        min: "2021-03-29 00:00:00"
+        max: "2026-07-22 00:00:00"
+        null_pct: 79.99
+  - path: price/price15_dk1_2025-09-30_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.82
+    rows: 31104
+    columns:
+      - name: TimeUTC
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2025-10-01 00:00:00+02:00"
+        max: "2026-08-20 23:45:00+02:00"
+        null_pct: 0.0
+      - name: TimeDK
+        type: VARCHAR
+        distinct: 31100
+        null_pct: 0.0
+      - name: PriceArea
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK1]
+      - name: DayAheadPriceEUR
+        type: DOUBLE
+        min: "-42.09"
+        max: 786.830017
+        null_pct: 0.0
+      - name: DayAheadPriceDKK
+        type: DOUBLE
+        min: "-314.542779"
+        max: 5881.947792
+        null_pct: 0.0
+  - path: price/price15_dk2_2025-09-30_2026-08-21.parquet
+    format: parquet
+    size_mb: 0.83
+    rows: 31104
+    columns:
+      - name: TimeUTC
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2025-10-01 00:00:00+02:00"
+        max: "2026-08-20 23:45:00+02:00"
+        null_pct: 0.0
+      - name: TimeDK
+        type: VARCHAR
+        distinct: 31100
+        null_pct: 0.0
+      - name: PriceArea
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK2]
+      - name: DayAheadPriceEUR
+        type: DOUBLE
+        min: "-15.81"
+        max: 911.140015
+        null_pct: 0.0
+      - name: DayAheadPriceDKK
+        type: DOUBLE
+        min: "-118.149711"
+        max: 6806.762596
+        null_pct: 0.0
+  - path: price/price_dk1_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 1.38
+    rows: 59159
+    columns:
+      - name: HourUTC
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-01-01 00:00:00+01:00"
+        max: "2025-09-30 23:00:00+02:00"
+        null_pct: 0.0
+      - name: HourDK
+        type: VARCHAR
+        distinct: 59153
+        null_pct: 0.0
+      - name: PriceArea
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK1]
+      - name: SpotPriceDKK
+        type: DOUBLE
+        min: "-3277.389893"
+        max: 6982.419922
+        null_pct: 0.0
+      - name: SpotPriceEUR
+        type: DOUBLE
+        min: "-440.100006"
+        max: 936.280029
+        null_pct: 0.0
+  - path: price/price_dk2_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 1.38
+    rows: 59159
+    columns:
+      - name: HourUTC
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-01-01 00:00:00+01:00"
+        max: "2025-09-30 23:00:00+02:00"
+        null_pct: 0.0
+      - name: HourDK
+        type: VARCHAR
+        distinct: 59153
+        null_pct: 0.0
+      - name: PriceArea
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK2]
+      - name: SpotPriceDKK
+        type: DOUBLE
+        min: "-447.459991"
+        max: 6982.640137
+        null_pct: 0.0
+      - name: SpotPriceEUR
+        type: DOUBLE
+        min: "-60.040001"
+        max: 936.309998
+        null_pct: 0.0
+  - path: production/production_dk1_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 5.38
+    rows: 81080
+    columns:
+      - name: HourUTC
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-01-01 00:00:00+01:00"
+        max: "2026-01-06 13:15:00+01:00"
+        null_pct: 0.0
+      - name: HourDK
+        type: VARCHAR
+        distinct: 81073
+        null_pct: 0.0
+      - name: PriceArea
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK1]
+      - name: TotalLoad
+        type: DOUBLE
+        min: 0.0
+        max: 964623.8125
+        null_pct: 0.35
+      - name: Biomass
+        type: DOUBLE
+        min: 0.0
+        max: 809.809998
+        null_pct: 0.46
+      - name: FossilGas
+        type: DOUBLE
+        min: 0.0
+        max: 994777.4375
+        null_pct: 0.46
+      - name: FossilHardCoal
+        type: DOUBLE
+        min: 0.0
+        max: 1587.73999
+        null_pct: 0.46
+      - name: FossilOil
+        type: DOUBLE
+        min: 0.0
+        max: 70.610001
+        null_pct: 0.46
+      - name: HydroPower
+        type: DOUBLE
+        min: 0.0
+        max: 3.89
+        null_pct: 1.02
+      - name: OtherRenewable
+        type: DOUBLE
+        min: 0.0
+        max: 8.18
+        null_pct: 0.46
+      - name: SolarPower
+        type: DOUBLE
+        min: 0.0
+        max: 2775.850098
+        null_pct: 0.36
+      - name: Waste
+        type: DOUBLE
+        min: 0.0
+        max: 10141.200195
+        null_pct: 0.46
+      - name: OnshoreWindPower
+        type: DOUBLE
+        min: 3.24
+        max: 7462.609863
+        null_pct: 0.36
+      - name: OffshoreWindPower
+        type: DOUBLE
+        min: 0.0
+        max: 1584.630005
+        null_pct: 0.36
+      - name: ExchangeContinent
+        type: DOUBLE
+        min: "-3284.209961"
+        max: 3345.179932
+        null_pct: 1.94
+      - name: ExchangeGreatBelt
+        type: DOUBLE
+        min: "-600.0"
+        max: 603.0
+        null_pct: 1.94
+      - name: ExchangeNordicCountries
+        type: DOUBLE
+        min: "-3228.320068"
+        max: 2378.389893
+        null_pct: 1.95
+      - name: ExchangeGreatBritain
+        type: DOUBLE
+        min: "-1456.0"
+        max: 1456.0
+        null_pct: 55.56
+  - path: production/production_dk2_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 4.50
+    rows: 81080
+    columns:
+      - name: HourUTC
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-01-01 00:00:00+01:00"
+        max: "2026-01-06 13:15:00+01:00"
+        null_pct: 0.0
+      - name: HourDK
+        type: VARCHAR
+        distinct: 81073
+        null_pct: 0.0
+      - name: PriceArea
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK2]
+      - name: TotalLoad
+        type: DOUBLE
+        min: 815.190002
+        max: 6384.890137
+        null_pct: 0.35
+      - name: Biomass
+        type: DOUBLE
+        min: 0.66
+        max: 755.23999
+        null_pct: 0.46
+      - name: FossilGas
+        type: DOUBLE
+        min: 0.0
+        max: 888.799988
+        null_pct: 0.46
+      - name: FossilHardCoal
+        type: DOUBLE
+        min: 0.0
+        max: 3599.379883
+        null_pct: 0.46
+      - name: FossilOil
+        type: DOUBLE
+        min: 0.0
+        max: 4275.200195
+        null_pct: 0.46
+      - name: HydroPower
+        type: DOUBLE
+        min: null
+        max: null
+        null_pct: 100.0
+      - name: OtherRenewable
+        type: DOUBLE
+        min: null
+        max: null
+        null_pct: 100.0
+      - name: SolarPower
+        type: DOUBLE
+        min: 0.0
+        max: 925.280029
+        null_pct: 0.36
+      - name: Waste
+        type: DOUBLE
+        min: 4.09
+        max: 146.119995
+        null_pct: 0.46
+      - name: OnshoreWindPower
+        type: DOUBLE
+        min: 4.4
+        max: 723.669983
+        null_pct: 0.36
+      - name: OffshoreWindPower
+        type: DOUBLE
+        min: 0.01
+        max: 986.809998
+        null_pct: 0.36
+      - name: ExchangeContinent
+        type: DOUBLE
+        min: "-1038.439941"
+        max: 1000.590027
+        null_pct: 1.94
+      - name: ExchangeGreatBelt
+        type: DOUBLE
+        min: "-603.0"
+        max: 600.0
+        null_pct: 1.94
+      - name: ExchangeNordicCountries
+        type: DOUBLE
+        min: "-1785.910034"
+        max: 1558.0
+        null_pct: 1.94
+      - name: ExchangeGreatBritain
+        type: DOUBLE
+        min: null
+        max: null
+        null_pct: 100.0
+  - path: residual/residual_dk1_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 2.97
+    rows: 66728
+    columns:
+      - name: hour_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-01-01 00:00:00+01:00"
+        max: "2026-08-12 08:00:00+02:00"
+        null_pct: 0.0
+      - name: area
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK1]
+      - name: load_mwh
+        type: DOUBLE
+        min: 1218.175659
+        max: 4870.058475
+        null_pct: 0.0
+      - name: wind_mwh
+        type: DOUBLE
+        min: 0.054231
+        max: 5091.73363
+        null_pct: 0.0
+      - name: solar_mwh
+        type: DOUBLE
+        min: "-0.6000000000000014"
+        max: 3328.9966600000002
+        null_pct: 0.0
+      - name: residual_mwh
+        type: DOUBLE
+        min: "-3052.4209389999996"
+        max: 3787.494865
+        null_pct: 0.0
+  - path: residual/residual_dk2_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 2.96
+    rows: 66728
+    columns:
+      - name: hour_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-01-01 00:00:00+01:00"
+        max: "2026-08-12 08:00:00+02:00"
+        null_pct: 0.0
+      - name: area
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK2]
+      - name: load_mwh
+        type: DOUBLE
+        min: 904.024109
+        max: 2949.687224
+        null_pct: 0.0
+      - name: wind_mwh
+        type: DOUBLE
+        min: 0.019417999999999998
+        max: 1624.73787
+        null_pct: 0.0
+      - name: solar_mwh
+        type: DOUBLE
+        min: "-0.5"
+        max: 1200.77985
+        null_pct: 0.0
+      - name: residual_mwh
+        type: DOUBLE
+        min: "-465.95206899999994"
+        max: 2502.7619240000004
+        null_pct: 0.0
+  - path: "soeb25_&_extra_params/dk_tax_and_tariff_params.csv"
+    format: csv
+    size_mb: 0.00
+    rows: 4
+    columns:
+      - name: param
+        type: VARCHAR
+        distinct: 4
+        null_pct: 0.0
+        values: [elafgift_dh_producer_net, gate_fee_arc_b_takst_municipal, gate_fee_arc_rest_erhverv, gate_fee_arc_rest_erhverv_med_haandtering]
+      - name: year
+        type: VARCHAR
+        distinct: 3
+        null_pct: 0.0
+        values: [2021-, 2022, 2025]
+      - name: value
+        type: DOUBLE
+        min: 0.4
+        max: 725.0
+        null_pct: 0.0
+      - name: unit
+        type: VARCHAR
+        distinct: 3
+        null_pct: 0.0
+        values: [DKK/ton, DKK/ton excl VAT, oere/kWh]
+      - name: source_name
+        type: VARCHAR
+        distinct: 3
+        null_pct: 0.0
+        values: ["ARC Affaldsenergianlaeg, takstblad", "Koebenhavns Kommune, Borgerrepraesentationen 22-09-2022", "Skatteforvaltningen, Den juridiske vejledning 2025-1"]
+      - name: source_url
+        type: VARCHAR
+        distinct: 3
+        null_pct: 0.0
+        values: ["https://a-r-c.dk/erhverv/erhvervsaffald-til-forbraending/forbraending-priser/", "https://info.skat.dk/data.aspx?oid=2444248", "https://www.kk.dk/dagsordener-og-referater/Borgerrepr%C3%A6sentationen/m%C3%B8de-22092022/referat/punkt-10"]
+      - name: source_ref
+        type: VARCHAR
+        distinct: 3
+        null_pct: 0.0
+        values: ["E.A.4.3.6.2, Bemaerk", Punkt 10, Takster pr. 1. november 2025]
+      - name: retrieved_date
+        type: DATE
+        min: 2026-08-09
+        max: 2026-08-09
+        null_pct: 0.0
+      - name: note
+        type: VARCHAR
+        distinct: 4
+        null_pct: 0.0
+        values: ["Commercial residual waste. REVENUE to the plant, so it enters the model as negative fuel cost. Do not also add a separate CO2-tax term without checking for double counting - the tariff already covers ARC's own waste taxes.", "STALE. Municipal household-waste stream, different from the commercial tariff above. The document itself states the rate needed to rise well over 100 kr/ton. Current value unknown.", "Same stream, with handling.", "VAT-registered heat producers are refunded the difference between the 0.4 oere/kWh minimum and the ordinary rate. ELAL para 11 stk.1 and para 11c, as amended by lov 2225 of 29-12-2020. Applies to DH heat pumps AND electric boilers. The household elvarmesats explicitly CANNOT be used by heat producers. Refund dates from lov 2225/2020, so 2019-2020 differs - see gaps.csv."]
+  - path: "soeb25_&_extra_params/gaps.csv"
+    format: csv
+    size_mb: 0.00
+    rows: 6
+    columns:
+      - name: gap_id
+        type: VARCHAR
+        distinct: 6
+        null_pct: 0.0
+        values: [biomass_price_2019_2024, co2_afgift_affald, dk2_unit_capacities, elafgift_2019_2020, gate_fee_argo, gate_fee_vestforbraending]
+      - name: what_is_missing
+        type: VARCHAR
+        distinct: 6
+        null_pct: 0.0
+        values: [ARGO gate fee, Actual installed MW_e and MW_th per DK2 agent, "Delivered biomass prices (halm, traeflis, traepiller) for 2019-2024", Electricity tax regime for DH heat producers before lov 2225 of 29-12-2020, Statutory Danish CO2 tax rate on waste incineration, Vestforbraending gate fee]
+      - name: why_it_matters
+        type: VARCHAR
+        distinct: 6
+        null_pct: 0.0
+        values: ["Negative fuel cost sets this agent's merit-order position.", "SOEB25 Tabel 2 and Tabel 5 both start at 2025, so a 2019-2026 backtest has no fuel price for 6 of 8 years. Fuel price is the first-order driver of whether a biomass CHP runs at all.", Same as above., "The 0.4 oere/kWh refund only applies from 2021, but the backtest starts in 2019.", "The DEA catalogue gives prototype sizes, not the real fleet.", Three of the six DK2 agents burn waste; the tax sits directly in their marginal cost.]
+      - name: where_to_look
+        type: VARCHAR
+        distinct: 6
+        null_pct: 0.0
+        values: [ARGO takstblad or annual report., Energinet CapacityPerMunicipality (already in duckdb); ENTSO-E production units list; plant annual reports., Historical elpatronordning provisions in ELAL; Skatteforvaltningen historical vejledning editions., "Option 1: stitch the near-year values from older SOEB editions (2018, 2019, 2021, 2023), each of which prices its own first years off contemporaneous forwards, then put them on one basis using price_index_2025base in soeb25_params.csv. Option 2: Energistyrelsen 'Energipriser og afgifter' quarterly observed statistics.", Vestforbraending takstblad or annual report., skat.dk statutory rate schedule under kuldioxidafgiftsloven; Groen Skattereform phase-in 2025-2030.]
+      - name: do_not_use
+        type: VARCHAR
+        distinct: 6
+        null_pct: 0.0
+        values: ["ARC's tariff as a proxy - separate cooperatives, separate cost bases.", "ARC's tariff as a proxy.", Catalogue prototype capacities as if they were real units., News articles - secondary sources disagree on which rate applies to ETS-covered incinerators., "SOEB25's 2025 figure as a proxy for earlier years. Tabel 5 Note 3 states its forwards were drawn January 2025, so even the 2025 cell is a forward view, not an outturn.", The current 0.4 oere/kWh figure for 2019-2020.]
+      - name: blocks
+        type: VARCHAR
+        distinct: 6
+        null_pct: 0.0
+        values: [ARGO marginal cost, All six agents, "Backtest years 2019-2024, all biomass CHP units", "Marginal cost of ARC, Vestforbraending, ARGO", "Power-to-heat cost, backtest years 2019-2020", Vestforbraending marginal cost]
+  - path: "soeb25_&_extra_params/soeb25_params.csv"
+    format: csv
+    size_mb: 0.05
+    rows: 280
+    columns:
+      - name: param
+        type: VARCHAR
+        distinct: 20
+        null_pct: 0.0
+      - name: year
+        type: BIGINT
+        min: 2015
+        max: 2050
+        null_pct: 1.79
+      - name: value
+        type: DOUBLE
+        min: 0.0
+        max: 1652.0
+        null_pct: 0.0
+      - name: unit
+        type: VARCHAR
+        distinct: 7
+        null_pct: 0.0
+        values: [DKK2025/GJ, DKK2025/MWh, DKK2025/ton, GJ/1000Nm3, GJ/ton, index, kg CO2/GJ]
+      - name: source_table
+        type: VARCHAR
+        distinct: 6
+        null_pct: 0.0
+        values: [Tabel 1, Tabel 10, Tabel 12, Tabel 13, Tabel 15, Tabel 2]
+      - name: source_cell
+        type: VARCHAR
+        distinct: 224
+        null_pct: 0.0
+      - name: note
+        type: VARCHAR
+        distinct: 7
+        null_pct: 0.0
+        values: ["57.1 for 2025-2031, then 0 from 2032 on marginal-biogas logic. For a 2019-2026 historical study use 57.1.", FM nettoprisindeks. Use to put values from different SOEB editions on one price basis., "Faktorpris, excl. taxes/subsidies/VAT. An kraftvaerk = central CHP. An vaerk = decentral CHP / DH plant.", "Faktorpris. Forecast, not observed. Prefer ICAP observed prices for a historical backtest; use this only as a cross-check.", "Kilde DCE. Table note: for biomasse og biogas er anvendt en CO2 emissionsfaktor paa 0 - accounting convention, not physics.", "NOT refundable, unlike elafgift. Candidate explanation for why real DK2 power-to-heat runs at only 1.4% of production.", Nedre braendvaerdi (lower heating value).]
+  - path: weather/weather_dk1_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 1.12
+    rows: 66960
+    columns:
+      - name: wind_speed_100m
+        type: DOUBLE
+        min: 0.3
+        max: 95.3
+        null_pct: 0.0
+      - name: area
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK1]
+      - name: wind_gusts_10m
+        type: DOUBLE
+        min: 1.4
+        max: 126.7
+        null_pct: 0.0
+      - name: wind_direction_100m
+        type: BIGINT
+        min: 0
+        max: 360
+        null_pct: 0.0
+      - name: shortwave_radiation
+        type: DOUBLE
+        min: 0.0
+        max: 863.0
+        null_pct: 0.0
+      - name: direct_radiation
+        type: DOUBLE
+        min: 0.0
+        max: 765.0
+        null_pct: 0.0
+      - name: diffuse_radiation
+        type: DOUBLE
+        min: 0.0
+        max: 402.0
+        null_pct: 0.0
+      - name: cloud_cover
+        type: BIGINT
+        min: 0
+        max: 100
+        null_pct: 0.0
+      - name: temperature_2m
+        type: DOUBLE
+        min: "-16.6"
+        max: 33.3
+        null_pct: 0.0
+      - name: hour_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-01-01 01:00:00+01:00"
+        max: "2026-08-22 01:00:00+02:00"
+        null_pct: 0.0
+  - path: weather/weather_dk2_2019-01-01_2026-08-21.parquet
+    format: parquet
+    size_mb: 1.13
+    rows: 66960
+    columns:
+      - name: wind_speed_100m
+        type: DOUBLE
+        min: 0.0
+        max: 83.2
+        null_pct: 0.0
+      - name: area
+        type: VARCHAR
+        distinct: 1
+        null_pct: 0.0
+        values: [DK2]
+      - name: wind_gusts_10m
+        type: DOUBLE
+        min: 1.1
+        max: 118.8
+        null_pct: 0.0
+      - name: wind_direction_100m
+        type: BIGINT
+        min: 0
+        max: 360
+        null_pct: 0.0
+      - name: shortwave_radiation
+        type: DOUBLE
+        min: 0.0
+        max: 880.0
+        null_pct: 0.0
+      - name: direct_radiation
+        type: DOUBLE
+        min: 0.0
+        max: 762.0
+        null_pct: 0.0
+      - name: diffuse_radiation
+        type: DOUBLE
+        min: 0.0
+        max: 399.0
+        null_pct: 0.0
+      - name: cloud_cover
+        type: BIGINT
+        min: 0
+        max: 100
+        null_pct: 0.0
+      - name: temperature_2m
+        type: DOUBLE
+        min: "-15.1"
+        max: 33.6
+        null_pct: 0.0
+      - name: hour_utc
+        type: TIMESTAMP WITH TIME ZONE
+        min: "2019-01-01 01:00:00+01:00"
+        max: "2026-08-22 01:00:00+02:00"
+        null_pct: 0.0
