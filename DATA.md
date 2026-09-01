@@ -392,16 +392,41 @@ daglige prognose for varmebehov` → **varmebehov = 熱網公司的需求預測;
 而模型跟著價格走(ρ=−0.74)。候選解釋是丹麥電鍋爐的主要收入來自**調頻而非現貨套利**
 → 調度由啟動訊號決定。⚠️ **這是假說,未查證,不可當結論引用。**
 
-已逐一探測、**確認存在且 schema 對得上**(各回 HTTP 200):
+## 🔴🔴 2026-08-30 更正:2026-08-12 記下來的那四個名字**全部已停更**
 
-| dataset                      | 關鍵欄位                                                              | 用途                  |
-| ---------------------------- | --------------------------------------------------------------------- | --------------------- |
-| `RegulatingBalancePowerdata` | `PriceArea`, `mFRRUpActBal`, `mFRRDownActBal`, `ImbalanceMWh`,逐時    | **實際啟動量**,最直接 |
-| `FcrReservesDK2`             | `FCR_N_PriceEUR`, `FCR_D_UpPriceEUR`, `FCR_D_DownPriceEUR`,逐時       | 調頻容量價            |
-| `MfrrReservesDK2`            | `mFRR_DownPurchased`, `mFRR_UpPurchased`, `mFRR_*PriceEUR`,逐時       | mFRR 採購量與價       |
-| `FcrNdDK2`                   | `ProductName`, `AuctionType`, `PurchasedVolumeLocal`, `PriceTotalEUR` | 分產品拍賣            |
+拉了 Energi Data Service 的完整目錄(`GET /meta/dataset`,3,100 個 dataset)逐一比對:
+`MfrrReservesDK1/DK2`、`FcrReservesDK1/DK2`、`RegulatingBalancePowerdata`、`AfrrReservesDK1`
+的官方說明都寫 **"Discontinued, please read description"**,並各自指定了接班者。
 
-⚠️ **`AfrrReservesDK2` 不存在**(404)—— 別照那個命名規律亂猜。
+🔴 **照舊名字抓不會報錯,會靜默拿到一條 2023 年就斷掉的序列。** 這跟「檔名 vs 實際涵蓋」
+(§10.6)是同一類的坑,只是發生在來源端。
+
+| 停更的 | 官方指定的接班 |
+| --- | --- |
+| `MfrrReservesDK1/DK2` | **`mFRRCapacityMarket`**(2023-06 之後的資料在這) |
+| `RegulatingBalancePowerdata` | **`ImbalancePrice`** + **`MfrrEnergyActivationMarket`** |
+| `FcrReservesDK1/DK2` | `FcrDK1` / `FcrNdDK2` |
+| `AfrrReservesDK1` | `AfrrActivatedAutomatic` / **`AfrrReservesNordic`** |
+
+⚠️ `RegulatingBalancePowerdata` 在 `new_src/data/imbalance_price.py` 裡**仍然是對的用法**
+—— 那裡是刻意拿它當 2025-03-04 之前的舊制逐時段,已標註停更。**不要順手改掉那一支。**
+
+### ✅ 現行的名字(2026-08-30 實測,各回 HTTP 200,最早時戳是實際拉到的)
+
+| dataset | 關鍵欄位 | 最早 | 解析度 | 價區 |
+| --- | --- | --- | --- | --- |
+| **`mFRRCapacityMarket`** ★ | `UpDemandMW`, `UpProcuredMW`, `UpPriceEUR`, `Down*`(+DKK) | **2023-06-21** | 逐時 | DK1+DK2 |
+| **`MfrrEnergyActivationMarket`** ★ | `mFRRSAUp/DownEUR`, `mFRRDAUp/DownMW`, `Totalm FRRUp/DownMW`, `mFRROffered*` | **2025-03-04** | **15 分** | DK1+DK2 |
+| `AfrrReservesNordic` | 同 mFRRCapacityMarket 的欄位形狀 | 2022-12-08 | 逐時 | 含 DK1/DK2 |
+| `AfrrEnergyActivation` | `aFRR_Activated`, `aFRR_ActivatedEUR` | — | **毫秒級** | DK1/DK2 |
+| `FcrDK1` | `FCRdomestic_MW`, `FCRabroad_MW`, `FCRcross_EUR`, `FCRdk_EUR` | 2021-01-19 | 逐時 | DK1 |
+| `FcrNdDK2` | `ProductName`, `AuctionType`, `PurchasedVolumeLocal`, `PriceTotalEUR` | 2021-11-10 | 逐時 | DK2 |
+| `MfrrCapacityMarketExtra` | 額外拍賣 | 🔴 探測時撞 429,**未確認** | — | — |
+
+★ = 交易線階段 3(備轉)真正需要的兩個。
+🔑 **`MfrrEnergyActivationMarket` 的起點 2025-03-04 正好是 §12 的第一個制度日** —— 同一件事的兩面。
+🔴 **DK1 與 DK2 的 FCR 是不同產品**(不同同步區),不要合併成一欄。
+⚠️ **`AfrrReservesDK2` 不存在**(404)—— 別照命名規律亂猜;aFRR 走 `AfrrReservesNordic`。
 🔴 **批量抓取撞到 429**:`limit=5` 的小查詢通,但一個月 `limit=1000` 就被擋,
 而且會進入懲罰視窗(連續 5 次退避 45 秒仍全 429)。**要抓就照 README 的規矩:
 先抓一次存快取、分小塊、間隔拉長**,不要在互動中連打。

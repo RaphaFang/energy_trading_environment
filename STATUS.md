@@ -613,9 +613,13 @@ AMV3 燃煤 2020-03 退出、BIO4 2019-10 進場)。**2019–2020 的 P2H 與 20
 候選解釋是**輔助服務市場** —— 丹麥電鍋爐的主要收入可能來自調頻而非現貨套利,
 那樣調度就由啟動訊號決定,不是由現貨價。⚠️ **未查證,不要當結論引用。**
 若成立,它在成本式裡是一個**漏掉的收益項**,不是一個新框架。
-可測:Energinet 的 `RegulatingBalancePowerdata`(逐時、分價區、mFRR 實際啟動量)、
-`FcrReservesDK2`、`MfrrReservesDK2` —— **2026-08-12 已確認這三個資料集存在且 schema 對得上**
-(各回 HTTP 200),但批量抓取撞到 rate limit,尚未取得(**使用者接手中**)。
+可測:Energinet 的備轉/平衡市場資料集。
+🔴 **2026-08-30 更正:這裡原本記的 `RegulatingBalancePowerdata` / `FcrReservesDK2` /
+`MfrrReservesDK2` 三個名字全部已停更**,照舊名字抓會靜默拿到 2023 年就斷掉的序列。
+**現行的名字與涵蓋窗口見 `DATA.md` §9b**(2026-08-30 實測):
+主要是 **`mFRRCapacityMarket`**(2023-06 起、逐時、DK1+DK2)與
+**`MfrrEnergyActivationMarket`**(2025-03-04 起、15 分、DK1+DK2)。
+批量抓取仍會撞 rate limit(IP 級冷卻),要分小塊 + 長退避。
 
 ---
 
