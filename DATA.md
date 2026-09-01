@@ -392,16 +392,41 @@ daglige prognose for varmebehov` → **varmebehov = 熱網公司的需求預測;
 而模型跟著價格走(ρ=−0.74)。候選解釋是丹麥電鍋爐的主要收入來自**調頻而非現貨套利**
 → 調度由啟動訊號決定。⚠️ **這是假說,未查證,不可當結論引用。**
 
-已逐一探測、**確認存在且 schema 對得上**(各回 HTTP 200):
+## 🔴🔴 2026-08-30 更正:2026-08-12 記下來的那四個名字**全部已停更**
 
-| dataset                      | 關鍵欄位                                                              | 用途                  |
-| ---------------------------- | --------------------------------------------------------------------- | --------------------- |
-| `RegulatingBalancePowerdata` | `PriceArea`, `mFRRUpActBal`, `mFRRDownActBal`, `ImbalanceMWh`,逐時    | **實際啟動量**,最直接 |
-| `FcrReservesDK2`             | `FCR_N_PriceEUR`, `FCR_D_UpPriceEUR`, `FCR_D_DownPriceEUR`,逐時       | 調頻容量價            |
-| `MfrrReservesDK2`            | `mFRR_DownPurchased`, `mFRR_UpPurchased`, `mFRR_*PriceEUR`,逐時       | mFRR 採購量與價       |
-| `FcrNdDK2`                   | `ProductName`, `AuctionType`, `PurchasedVolumeLocal`, `PriceTotalEUR` | 分產品拍賣            |
+拉了 Energi Data Service 的完整目錄(`GET /meta/dataset`,3,100 個 dataset)逐一比對:
+`MfrrReservesDK1/DK2`、`FcrReservesDK1/DK2`、`RegulatingBalancePowerdata`、`AfrrReservesDK1`
+的官方說明都寫 **"Discontinued, please read description"**,並各自指定了接班者。
 
-⚠️ **`AfrrReservesDK2` 不存在**(404)—— 別照那個命名規律亂猜。
+🔴 **照舊名字抓不會報錯,會靜默拿到一條 2023 年就斷掉的序列。** 這跟「檔名 vs 實際涵蓋」
+(§10.6)是同一類的坑,只是發生在來源端。
+
+| 停更的 | 官方指定的接班 |
+| --- | --- |
+| `MfrrReservesDK1/DK2` | **`mFRRCapacityMarket`**(2023-06 之後的資料在這) |
+| `RegulatingBalancePowerdata` | **`ImbalancePrice`** + **`MfrrEnergyActivationMarket`** |
+| `FcrReservesDK1/DK2` | `FcrDK1` / `FcrNdDK2` |
+| `AfrrReservesDK1` | `AfrrActivatedAutomatic` / **`AfrrReservesNordic`** |
+
+⚠️ `RegulatingBalancePowerdata` 在 `new_src/data/imbalance_price.py` 裡**仍然是對的用法**
+—— 那裡是刻意拿它當 2025-03-04 之前的舊制逐時段,已標註停更。**不要順手改掉那一支。**
+
+### ✅ 現行的名字(2026-08-30 實測,各回 HTTP 200,最早時戳是實際拉到的)
+
+| dataset | 關鍵欄位 | 最早 | 解析度 | 價區 |
+| --- | --- | --- | --- | --- |
+| **`mFRRCapacityMarket`** ★ | `UpDemandMW`, `UpProcuredMW`, `UpPriceEUR`, `Down*`(+DKK) | **2023-06-21** | 逐時 | DK1+DK2 |
+| **`MfrrEnergyActivationMarket`** ★ | `mFRRSAUp/DownEUR`, `mFRRDAUp/DownMW`, `Totalm FRRUp/DownMW`, `mFRROffered*` | **2025-03-04** | **15 分** | DK1+DK2 |
+| `AfrrReservesNordic` | 同 mFRRCapacityMarket 的欄位形狀 | 2022-12-08 | 逐時 | 含 DK1/DK2 |
+| `AfrrEnergyActivation` | `aFRR_Activated`, `aFRR_ActivatedEUR` | — | **毫秒級** | DK1/DK2 |
+| `FcrDK1` | `FCRdomestic_MW`, `FCRabroad_MW`, `FCRcross_EUR`, `FCRdk_EUR` | 2021-01-19 | 逐時 | DK1 |
+| `FcrNdDK2` | `ProductName`, `AuctionType`, `PurchasedVolumeLocal`, `PriceTotalEUR` | 2021-11-10 | 逐時 | DK2 |
+| `MfrrCapacityMarketExtra` | 額外拍賣 | 🔴 探測時撞 429,**未確認** | — | — |
+
+★ = 交易線階段 3(備轉)真正需要的兩個。
+🔑 **`MfrrEnergyActivationMarket` 的起點 2025-03-04 正好是 §12 的第一個制度日** —— 同一件事的兩面。
+🔴 **DK1 與 DK2 的 FCR 是不同產品**(不同同步區),不要合併成一欄。
+⚠️ **`AfrrReservesDK2` 不存在**(404)—— 別照命名規律亂猜;aFRR 走 `AfrrReservesNordic`。
 🔴 **批量抓取撞到 429**:`limit=5` 的小查詢通,但一個月 `limit=1000` 就被擋,
 而且會進入懲罰視窗(連續 5 次退避 45 秒仍全 429)。**要抓就照 README 的規矩:
 先抓一次存快取、分小塊、間隔拉長**,不要在互動中連打。
@@ -1361,3 +1386,95 @@ TVIS 5.4 / Aalborg 5.0。**要湊到 80% 需要前 40 個網。**
 年量(EPT,**逐網真值**)× 度日形狀(DMI 逐時氣溫,**逐市真值**)= **可驗證的模型**:
 拿哥本哈根當 hold-out 就能量出誤差。repo 已有 `heat/demand.py` 的度日代理。
 🔴 **但要標明它是模型輸出,而且尖峰時最不準** —— 而尖峰正是論文最在意的地方。
+
+---
+
+## 12. 🔴 不平衡價:**四個制度期,不是一條序列**(2026-08-28)
+
+> 這一節回答了交接頁掛了一輪的問題:**|不平衡價 − 現貨價| 為什麼從 €26 跳到 €76。**
+> 重新推導的腳本 = `new_src/trading/imbalance_regimes.py`(有 3 個 self-check)。
+
+### 12.1 結論:**那不是市場變劇烈,主要是定價規則換了**
+
+**2025-03 之後的不平衡價含了一個 2024 年不存在的成份:aFRR 的啟動價。**
+丹麥 2024-10-02 加入 **PICASSO**(aFRR 的歐洲共同平台,每 4 秒清算),aFRR 在丹麥
+**用很小的量清出很極端的價**:定價的那些格,aFRR 量中位只有 **3.1–3.6 MW**,
+其中 **29–35% 不到 1 MW**。見過 0.93 MW 清出 **801 EUR/MWh**。
+
+DK2 的分解(平均 |dev|,EUR/MWh):
+
+| | 值 | 說明 |
+| --- | --- | --- |
+| 舊制 2024(只有 mFRR,逐時) | **25.89** | 基準 |
+| 新制反事實「只吃 mFRR」 | **43.00** | 15 分鐘 + mFRR EAM 帶來 **+17.11** |
+| 新制實際(含 aFRR) | **75.53** | **aFRR 單獨帶來 +32.53 = 總增幅的 66%** |
+
+DK1 同樣的分解:23.85 → 38.90 → 64.57(aFRR 佔 **63%**)。
+
+🔴 **所以跨接縫比較 2024 與 2025 量到的是市場改革,不是 agent 的績效。**
+   **目標函數只能在同一個制度期內估。**
+
+### 12.2 四個日期(制度事實,**不要對齊成同一天**)
+
+| 日期 | 改了什麼 | 怎麼知道的 |
+| --- | --- | --- |
+| **2025-03-04** | 北歐 **mFRR EAM** 上線 + **不平衡結算**轉 15 分鐘 | 資料集接縫;Nordic Balancing Model 公告 |
+| **2025-03-18** | **不平衡價改成同時吃 mFRR 與 aFRR** | 🔑 **本輪從資料裡查出來的**:3/04–3/17 aFRR 定價比例**恰好 0%**,3/19 起跳到 ~40% 並穩住 |
+| **2025-09-30** | **日前市場**轉 15 分鐘(交割 10-01,全歐 SDAC) | 電價資料集接力 |
+| **2025-12-08** | mFRR EAM **定價缺陷的永久修正**,TSO 停止人工更正 | Nordic Balancing Model「Pricing issue in Nordic mFRR EAM」 |
+
+→ **3/04–3/17 那兩週是乾淨的自然實驗**:同樣是 15 分鐘 + mFRR EAM,但**還沒有 aFRR**。
+
+### 12.3 反推出來的定價規則(腳本會驗,命中 98.5% / 99.1%)
+
+```
+方向 = +1(系統缺電):不平衡價 = max(mFRR 上調邊際價, aFRR 上調加權均價)
+方向 = −1(系統電太多):不平衡價 = min(mFRR 下調邊際價, aFRR 下調加權均價)
+方向 =  0(系統平衡)  :不平衡價 = 現貨價
+```
+
+⚠️ **aFRR 沒啟動時 `aFRRVWA*EUR` 欄是 0 不是缺值** —— 直接拿去比大小,那個 0 會偽裝成
+最低價,把下調側的規則算歪。**只有 `aFRRUpMW`/`aFRRDownMW` 非零時才准進候選。**
+⚠️ 剩下的 1–1.5% 應是丹麥的「特定產品」(慢速備轉)也進了規則,**資料集沒有那一欄**。
+
+### 12.4 兩個坑
+
+- 🔴 **前九個月的資料被已知缺陷污染。** 不可分割的 mFRR 標在價格邊際上被啟動時,會讓
+  高/低價擴散到不該擴散的區。問題在上線**前**就發現,上線後靠**人工更正**擋著
+  (驗價失敗的格停止自動發布,**隔個工作日 15:00** 才補),2025-12-08 才有永久解。
+  → **乾淨的估計窗口 = 2025-12-08 起。** 也是為什麼 agent 的價格特徵要落後 **≥2 天**:
+  「昨天的不平衡價」在日前關門時**不一定存在**。
+- 🔴 **不可以宣稱「日前轉 15 分讓不平衡成本下降」。** 月份對齊後 2025→2026 確實降了
+  (DK2 99.9 → 59.1、DK1 85.1 → 55.2),但**日前改制與 mFRR 定價修正完全混淆**,
+  而且 2025 那幾個月正是缺陷最兇的時候。腳本印數字,**不做歸因**。
+
+### 12.5 順手修正的一筆
+
+`DominatingDirection == 0 → 不平衡價 == 現貨價` 這個 self-check,先前記錄是
+「DK1/DK2 都 100%」。**實際上 DK1 有 1 格違例**:`2025-03-16 17:30`,方向標 0
+但 mFRR 上調價 250 蓋過現貨價 94.98。DK2 是乾淨的 0 例外。
+腳本的 assert 因此設成「**≤1 格**」並註明那一格,不是放寬容差。
+
+### 12.6 交割日 D 的時刻表 —— **誰對哪一天、誰在哪一天發布**
+
+判斷任何特徵會不會 leak,只要問一句:**它在 D−1 12:00 之前存在嗎?**
+
+| 時刻 | 發生什麼 | 對哪一天 |
+| --- | --- | --- |
+| **D−2 12:55** | D−1 的日前價出清並公布 | D−1 |
+| **D−1 12:00** | **日前投標關門** ← ★ agent 的決策時點 | 替 D 日 96 格下單 |
+| D−1 12:55 | **D 日的日前價才公布**(15 分制上路後由 12:45 改成 12:55) | D |
+| D−1 18:00 | 🔴 ENTSO-E 日前負載/風光預測的**法規截止時點** | D |
+| D 00:00 起 | 交割 | D |
+| D 交割後 | 不平衡價逐格公布(缺陷期驗價失敗要隔個工作日 15:00) | D |
+
+由這張表直接得到三條規矩:
+
+1. **D 日的日前價不是特徵**,它在關門後 55 分鐘才出來 —— 它是目標的一半。
+2. **不平衡價衍生的特徵要落後 ≥2 天**。關門時只知道到約 D−1 11:00,目標若是 D 日下午的格,
+   落後 1 天會去拿還沒發生的值。落後 2 天最壞情況(目標 D 23:45 → 取 D−2 23:45)仍有 12 小時餘裕。
+   ⚪ **現貨價落後 1 天其實就安全**(D−1 的價在 D−2 12:55 已公布),用 2 天只是從嚴。
+3. 🔴 **ENTSO-E 的日前預測不保證趕得上關門**(法規容許到 18:00,晚了六小時)。
+   `agent.py` 用 `BID_TIME_SAFE` 把它們關掉當預設。**Energinet 的 `ForecastDayAhead` 風險低得多**
+   —— 它存在的目的就是服務中午那場拍賣,但同樣**沒有發布時戳可證**,要釘死得拉
+   ENTSO-E API 的 `createdDateTime`。

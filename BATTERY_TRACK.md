@@ -1,3 +1,15 @@
+> # 🔴 2026-08-27:**五支程式碼已從工作區移除**
+>
+> `v2_multi.py` · `v3_cournot.py` · `v4_wind.py` · `experiment.py` · `compare.py`
+> —— Cournot / λ / 多 agent 最佳反應那一套。**λ 量定 ≈0.005,該路線結案。**
+>
+> **拿回來**:`git show battery-track-final:new_src/battery/v3_cournot.py`
+> 或 `git restore --source=battery-track-final new_src/battery/`
+>
+> ✅ **留在工作區的兩支是交易線的地基**:`v1_single.py`(資訊階梯)、`fringe.py`(殘餘需求曲線)。
+> 🔑 **這份文件現在的用途:交易線的前情提要** —— λ 為什麼是 0、預測管道長什麼樣。
+> 現行方向見 [`HANDOVER.md`](HANDOVER.md)。
+
 # 電池線 + 預測管道 — 設計、結果、結案理由
 
 > 合併自舊的 `SIMULATOR_OVERVIEW.md` + `MULTI_AGENT_MARKET.md` + `MODEL_MATH.md`(2026-08-07)。
@@ -126,6 +138,20 @@ MAE  = (1/N)Σ|y−ŷ|                 平均差幾歐
 RMSE = √((1/N)Σ(y−ŷ)²)             重罰大失誤 → RMSE≫MAE 表示有尖峰爆走
 rMAE = MAE_模型 / MAE_naive        <1 才及格
 ```
+
+> 🔴 **2026-08-28 重測:下面這張表已經過時,排名翻掉了。**
+> 當時測試期只到 2025 年中;資料延到 2026-08-21 後,同一個切分點的測試期變成 18,598 小時,
+> **LightGBM 的 MAE 從 17.20 升到 25.54(rMAE 0.54 → 0.84),被 Lasso 反超。**
+>
+> 🔑 **原因查清楚了,而且不是「樹比較差」**:斷點正好在 **2025-10(日前市場轉 15 分鐘)**。
+> 之後電價水準上移(DK1 月均 79 → 97),**LightGBM 系統性低估 €23.3,連逐月重訓都救不了**
+> —— 樹的葉子值是歷史目標的平均,而擴張式訓練窗把新制度稀釋在七年舊資料裡;
+> 線性模型靠燃料價係數就把整條預測抬高了(Lasso 逐月重訓偏誤只有 −2.0)。
+> **前半期 LightGBM 其實是全場最強(DK1 MAE 16.67)。**
+>
+> ✅ **對症修法有效**:只用最近 12 個月 + 改預測「相對昨天同一小時的變化」
+> → 三模型平均 **17.60(rMAE 0.58)/ DK2 18.70(0.58)**(去 leak 後的正式數字)。
+> **現行數字跑 `python new_src/models/baseline.py`;完整網格見 `new_src/models/experiments.py`。**
 
 ### 結果進程(LightGBM,€/MWh)
 
