@@ -1,0 +1,100 @@
+{
+ "_snapshot_meta": {
+  "endpoint": "https://www.varmelast.dk/api/v1/heatdata/dictionary",
+  "retrieved_utc": "2026-08-10T09:42:44.422121+00:00",
+  "why": "該 API 唯一的官方欄位定義,動態頁面無版本保證。關鍵句:production.explanation = 'Produktion i alt *eksklusive op- og afladning på varmelagre'(總生產不含蓄熱充放)、header.info 的 90 分鐘延遲(證明是事後實測非事前計畫)。"
+ },
+ "dictionary": {
+  "header": {
+   "view": "Visning",
+   "mapView": "Oversigt",
+   "historicalDataView": "Historisk data",
+   "info": "Data vises med 90 minutters forsinkelse og opdateres hvert 5. minut. Bemærk at historisk data fra 10.-29. juli 2026 er fejlbehæftet, dette rettes hurtigst muligt.",
+   "infoText": "<p>Klik p&aring; ikonerne for mere information for mere information om de enkelte anl&aelig;g. Den stiplede linjes bev&aelig;gelse indikerer, om varmen aktuelt flyttes fra VEKS til CTR eller fra CTR til VEKS.</p>"
+  },
+  "mobileHeader": {
+   "info": "Aktuelt varmeforbrug og varmeproduktion",
+   "infoText": "<p>Data vises med 90 minutters forsinkelse og opdateres hvert 5. minut.</p>"
+  },
+  "legend": {
+   "plantTitle": [
+    {
+     "title": "Kraftvarmeanlæg",
+     "background": "green",
+     "isSmall": false
+    },
+    {
+     "title": "Affaldsenergianlæg",
+     "background": "blue",
+     "isSmall": false
+    },
+    {
+     "title": "Varmelager",
+     "background": "brown",
+     "isSmall": false
+    },
+    {
+     "title": "Varmepumper",
+     "background": "#D9CA48",
+     "isSmall": true
+    },
+    {
+     "title": "Industriel overskudsvarme",
+     "background": "#CB6D15",
+     "isSmall": true
+    },
+    {
+     "title": "Overskudsvarme datacentre",
+     "background": "#9C62A5",
+     "isSmall": true
+    },
+    {
+     "title": "Biogas",
+     "background": "#088484",
+     "isSmall": true
+    },
+    {
+     "title": "Solvarme",
+     "background": "#136338",
+     "isSmall": true
+    },
+    {
+     "title": "Spidslast biomasse",
+     "background": "#FFD030",
+     "isSmall": true
+    },
+    {
+     "title": "Elkedler",
+     "background": "#F78E12",
+     "isSmall": true
+    }
+   ],
+   "linesTitle": "Transmissionsledning",
+   "infoPanelLinkTitle": "Læs mere om beregning af CO2",
+   "infoPanelTitle": "Data info",
+   "infoPanelText": "<p>Data vises med 90 minutters forsinkelse og opdateres hvert 5. minut. Opg&oslash;relsen af CO2 viser CO2-udledning fra varmeproduktion inklusiv elforbrug til at transportere varmen i fjernvarmenettene.</p>\n<p>&nbsp;</p>\n<p>Alle emissioner er opgjort efter seneste Milj&oslash;deklaration for transmissionsnettet. Milj&oslash;deklarationen udgives i 2. kvartal efter kalender&aring;rets oph&oslash;r og er udarbejdet af VEKS, CTR &amp; HOFOR. Samtlige CO2-emissioner er opgjort i CO2-&aelig;kvivalenter, dvs. inkl. metan og lattergas. CO2-emissionerne opdateret &aring;rligt.</p>\n<p>&nbsp;</p>\n<p>For kraftvarme- og affaldsenergianl&aelig;g er CO2-emissionerne m&aring;lte v&aelig;rdier og br&aelig;ndselsforbruget er opgjort ved 200% metoden. CO2-emissionerne for spidslastanl&aelig;g og biogas er opgjort p&aring; baggrund af beregnede v&aelig;rdier. For el anvendes der i Milj&oslash;deklarationen 200% metoden fra Energinets Milj&oslash;redeg&oslash;relse.</p>\n<p>&nbsp;</p>\n<p>L&aelig;s mere om Milj&oslash;deklarationen <a href=\"https://www.hofor.dk/baeredygtige-byer/beregn-co2/miljoedeklarationer/miljoedeklaration-for-fjernvarme/\">her</a>.</p>\n<p><strong>&nbsp;</strong></p>\n<p><strong>Opdateringer</strong></p>\n<p>D. 25-07-23 blev CO2-opg&oslash;relsen &aelig;ndret fra at anvende Energistyrelsens standardemissionsfaktorer, til at anvende seneste Milj&oslash;deklaration. Der ses derfor et spring i CO2-udledningen f&oslash;r og efter denne dato.</p>\n<p>&nbsp;</p>\n<p>D. 13-11-20 blev beregningen af elforbruget til systemets pumper berigtiget. </p>\n<p>&nbsp;</p>\n<p>&nbsp;</p>",
+   "infoPanelShortText": "39 gas og oliekedler er ikke vist på kortet",
+   "dataUpdatedPrefix": "Data opdateret",
+   "consumption": "Forbrug"
+  },
+  "production": {
+   "title": "Produktion",
+   "total": "Produktion i alt *",
+   "explanation": "*eksklusive op- og afladning på varmelagre"
+  },
+  "localProduction": {
+   "title": "Lokal produktion"
+  },
+  "accumulator": {
+   "title": "Varmelagre",
+   "increasing": "<b>Opladning:</b> Varme oplagres til senere brug",
+   "decreasing": "<b>Afladning:</b> Lagret varme bruges i nettet"
+  },
+  "datePicker": {
+   "title": "Datointerval",
+   "selectDate": "Vælg dato",
+   "from": "Fra",
+   "to": "Til"
+  }
+ }
+}
