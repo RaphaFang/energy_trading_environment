@@ -16,6 +16,10 @@ new_data/**
 # 自動生成的資料字典
 !new_data/DATA_DICTIONARY.yaml
 
+# sample_data/ 只活在 orphan 分支 `sample-data` 上,主分支不追蹤。
+# 重建:見該分支的 sample_data/README.md
+sample_data/
+
 # graphify 產出,graphify update ./ 可重建
 graphify-out/
 
